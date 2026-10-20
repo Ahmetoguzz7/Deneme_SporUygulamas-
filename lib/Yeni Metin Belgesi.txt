@@ -1,0 +1,4661 @@
+ =========================================================================
+ 1. KISIM VERİTABANI YAPISI
+ =========================================================================
+var DB_STRUCTURE = {
+  users [app, branches_id, first_name, last_name, email, phone, password_hash, role, profile_photo_url,last_login, amount, b_date, is_active,created_at, mother_name, mother_phone, father_name, father_phone, fcm_token],
+  payments [payments_id, student_id, groups_id, recorded_by, amount, due_date, paid_date, status, payment_method, note],
+  student_notes [id, student_id, coach_id, note, created_at],
+  sports [sports_id, spor_name, description],
+  parent_student [parent_student_id, parent_id, student_id],
+  group_students [group_students_id, groups_id, student_id, enrolled_at, is_active],
+  coaches [coach_id, user_id, branches_id, sports_id, bio, certificate_info, monthly_salary, hired_at, supervisor_coach_id],
+  notifications [notifications_id, sender_id, recipient_id, title, message, type, is_read, sent_at, groups_id,fcm_sent],
+  groups [groups_id, branches_id, coach_id, sports_id, groups_name, schedule, capacity, monthly_fee, is_active],
+  branches [branches_id, branches_name, address, phone, email, is_active, created_at],
+ attendances [attendances_id, groups_id, student_id, taken_by, attendance_date, status, note, updated_at]
+};
+
+var SCRIPT_PROP = PropertiesService.getScriptProperties();
+var SHEET_ID = SCRIPT_PROP.getProperty(sheetId);
+
+if (!SHEET_ID) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  SCRIPT_PROP.setProperty(sheetId, ss.getId());
+  SHEET_ID = ss.getId();
+}
+
+ =========================================================================
+ 2. KISIM checkIfEmailExists
+ =========================================================================
+
+function checkIfEmailExists(email) {
+  if (!email  email.toString().trim() === ) return false;
+
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(users);
+    if (!sheet) return false;
+
+    var values = sheet.getDataRange().getValues();
+    if (values.length  2) return false;
+
+    var headers = values[0];
+    var emailCol = headers.indexOf(email);
+    if (emailCol === -1) return false;
+
+    var trimmedEmail = email.toString().trim();
+
+    for (var i = 1; i  values.length; i++) {
+      var sheetEmail = values[i][emailCol] != null  values[i][emailCol].toString().trim()  ;
+      if (sheetEmail === trimmedEmail) {
+        return true;
+      }
+    }
+    return false;
+  } catch (e) {
+    Logger.log(checkIfEmailExists hatası  + e.toString());
+    return false;
+  }
+}
+
+ =========================================================================
+ 3. KISIM MENÜ VE YÖNETİM FONKSİYONLARI
+ =========================================================================
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('🏀 Basketbol Yönetim')
+      .addItem('📊 Sistemi Kur (Başlıkları Oluştur)', 'setupBasketballDatabase')
+      .addItem('📈 Kayıt Özetlerini Gör', 'getDatabaseSummary')
+      .addSeparator()
+      .addItem('💰 Aylık Ücretleri Kontrol Et', 'checkMonthlyFees')
+      .addItem('👥 Öğrenci-Grup İlişkilerini Kontrol Et', 'checkStudentGroupRelations')
+      .addSeparator()
+      .addItem('🖼️ Eksik Fotoğraf Linklerini Doldur', 'fillMissingImageLinksFromDriveFast')   🔥 BUNU EKLE
+      .addSeparator()
+      .addItem('🧪 Test Örnek Kullanıcı Ekle', 'testAddUser')
+      .addItem('🔍 Yapı Analizi Yap', 'analyzeAllSheets')
+      .addItem('📢 Test Duyuru Gönder', 'testNotification')
+      .addToUi();
+}
+
+function setupBasketballDatabase() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  for (var sheetName in DB_STRUCTURE) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) sheet = ss.insertSheet(sheetName);
+
+    var headers = DB_STRUCTURE[sheetName];
+    var existingHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+    if (JSON.stringify(existingHeaders) !== JSON.stringify(headers)) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    }
+
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, headers.length)
+        .setFontWeight(bold)
+        .setBackground(#cfe2f3)
+        .setBorder(true, true, true, true, true, true);
+  }
+  SpreadsheetApp.getUi().alert(✅ Sistem hazır! Tüm tablolar güncellendi.);
+}
+
+function getDatabaseSummary() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var summary = 📊 GÜNCEL KAYIT DURUMUn;
+  summary += ════════════════════════════════nn;
+
+  for (var sheetName in DB_STRUCTURE) {
+    var sheet = ss.getSheetByName(sheetName);
+    var count = sheet  sheet.getLastRow() - 1  0;
+    var bar = count  0  🟢  ⚪;
+    summary += bar +   + sheetName +   + (count  0  0  count) +  kayıtn;
+  }
+  SpreadsheetApp.getUi().alert(summary);
+}
+
+function testAddUser() {
+  var newUser = {
+    app ,
+    branches_id 1,
+    first_name Test,
+    last_name Kullanıcı,
+    email test@example.com,
+    phone 05550001122,
+    password_hash 123456,
+    role student,
+    profile_photo_url ,
+    amount 1500,
+    b_date 2010-01-01,
+    created_at new Date().toISOString().replace('T', ' ').substring(0, 19),
+    last_login ,
+    is_active TRUE
+  };
+
+  var result = apiInsertDataInternal(users, newUser);
+  if (result.success) {
+    SpreadsheetApp.getUi().alert(✅ Test kullanıcısı eklendi! ID  + result.id);
+  } else {
+    SpreadsheetApp.getUi().alert(❌ Hata  + result.error);
+  }
+}
+
+function testNotification() {
+  var testData = {
+    notifications_id ,
+    sender_id Admin,
+    recipient_id all,
+    groups_id ,
+    title Test Duyuru,
+    message Bu bir test duyurusudur. Sistem çalışıyor!,
+    type announcement,
+    is_read FALSE,
+    sent_at new Date().toISOString()
+  };
+
+  var result = apiInsertDataInternal(notifications, testData);
+  if (result.success) {
+    SpreadsheetApp.getUi().alert(✅ Test duyurusu eklendi! ID  + result.id);
+  } else {
+    SpreadsheetApp.getUi().alert(❌ Hata  + result.error);
+  }
+}
+
+ =========================================================================
+ 4. KISIM API - GET İSTEKLERİ
+ =========================================================================
+
+function doGet(e) {
+  var output = ContentService.createTextOutput();
+  output.setMimeType(ContentService.MimeType.JSON);
+
+  try {
+    var sheetName = e && e.parameter  e.parameter.sheet  null;
+    if (!sheetName) {
+      return output.setContent(JSON.stringify({ success false, error Eksik parametre sheet }));
+    }
+
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      return output.setContent(JSON.stringify({ success false, error Sayfa bulunamadı  + sheetName }));
+    }
+
+    var values = sheet.getDataRange().getValues();
+    if (values.length  2) {
+      return output.setContent(JSON.stringify({ success true, data [] }));
+    }
+
+    var action = e && e.parameter  e.parameter.action  null;
+    if (action === getNotifications) {
+      return responseSuccess(getNotificationsForUser(e.parameter.user_id));
+    }
+
+    var headers = values[0];
+    var rows = values.slice(1);
+
+    var jsonData = [];
+
+    for (var i = 0; i  rows.length; i++) {
+      var obj = {};
+      for (var j = 0; j  headers.length; j++) {
+        var header = headers[j];
+        var value = rows[i][j];
+
+        if (value === undefined  value === null  value === ) {
+          obj[header] = ;
+        } else if (value instanceof Date) {
+          obj[header] = value.toISOString();
+        } else if (typeof value === number) {
+          obj[header] = value.toString();
+        } else {
+          obj[header] = value.toString();
+        }
+      }
+      jsonData.push(obj);
+    }
+
+    Logger.log(✅  + sheetName +  sayfasından  + jsonData.length +  satır veri çekildi);
+
+    return output.setContent(JSON.stringify({ success true, data jsonData }));
+
+  } catch (err) {
+    Logger.log(❌ GET Hatası  + err.toString());
+    return output.setContent(JSON.stringify({ success false, error err.toString() }));
+  }
+}
+
+function doOptions(e) {
+  return ContentService.createTextOutput(OK).setMimeType(ContentService.MimeType.TEXT);
+}
+
+ =========================================================================
+ 5. KISIM API - POST İSTEKLERİ
+ =========================================================================
+
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    var requestBody = e.postData && e.postData.contents  e.postData.contents  ;
+    if (!requestBody) return responseError(POST içeriği boş.);
+
+    var request = JSON.parse(requestBody);
+    var action = request.action;
+
+    Logger.log(📥 doPost action  + action);
+
+    if (action === insert) {
+      var sheetName = request.table;
+      if (!sheetName) return responseError(Tablo adı gerekli.);
+      return handleInsert(sheetName, request.data);
+    }
+    else if (action === login) {
+      return handleLogin(request.email, request.password);
+    }
+    else if (action === registerEverywhere) {
+      return handleRegisterEverywhere(request.data);
+    }
+    else if (action === assignCoachToGroup) {
+      return handleAssignCoachToGroup(request.group_id, request.coach_id);
+    }
+    else if (action === assignStudentToGroup) {
+      return handleAssignStudentToGroup(request.student_id, request.group_id, request.is_active);
+    }
+    else if (action === updateGroup) {
+      return handleUpdateGroup(request.group_id, request.data);
+    }
+    else if (action === updateUser) {
+      return handleUpdateUser(request.data);
+    }
+    else if (action === saveAttendance) {
+      return handleSaveAttendance(request.data);
+    }
+    else if (action === removeStudentFromGroup) {
+      return handleRemoveStudentFromGroup(request.student_id, request.group_id);
+    }
+    else if (action === deactivateUser) {
+      return handleDeactivateUser(request.user_id);
+    }
+    else if (action === updateNotification) {
+      return handleUpdateNotification(request.notifications_id, request.is_read);
+    }
+    else if (action === updateLastLogin) {
+      return handleUpdateLastLogin(request.user_id, request.last_login);
+    }
+    else if (action === checkMonthlyFees) {
+      return handleCheckMonthlyFees();
+    }
+    else if (action === updateUserAmount) {
+      return handleUpdateUserAmount(request.user_id, request.amount);
+    }
+    else if (action === updatePassword) {
+      return handleUpdatePassword(request.user_id, request.password_hash);
+    }
+    else if (action === send2FACode) {
+      return handleSend2FACode(request.phone, request.code);
+    }
+    else if (action === uploadImage) {
+      return handleUploadImage(request.file_name, request.file_data, request.folderName);
+    }
+    else if (action === getImageUrl) {
+      return handleGetImageUrl(request.file_name, request.folder);
+    }
+    else if (action === updateFcmToken) {
+      return handleUpdateFcmToken(request.user_id, request.fcm_token);
+    }
+    else if (action === updateGroupSchedule) {
+      return handleUpdateGroupSchedule(request.group_id, request.schedule);
+    }
+    else if (action === transferStudentToGroup) {
+      return handleTransferStudentToGroup(request.student_id, request.new_group_id);
+    }
+    else if (action === deletePayment) {
+      return handleDeletePayment(request.payments_id);
+    }
+    else if (action === updatePayment) {
+      return handleUpdatePayment(request.payments_id, request.data);
+    }
+    else if (action === getNotifications) {
+      return responseSuccess(getNotificationsForUser(request.user_id));
+    }
+     🔥🔥🔥 YARDIMCI ANTRENÖR YÖNETİMİ 🔥🔥🔥
+    else if (action === transferAssistant) {
+      return handleTransferAssistant(request.assistant_user_id, request.old_master_user_id, request.new_master_user_id);
+    }
+    else if (action === removeAssistant) {
+      return handleRemoveAssistant(request.assistant_user_id, request.master_user_id);
+    }
+    else if (action === getAssistantsForCoach) {
+      return handleGetAssistantsForCoach(request.master_user_id);
+    } else if (action === assignAssistantToMaster) {
+      return assignAssistantToMaster(request);
+    }
+    else if (action === removeAssistantFromMaster) {
+      return removeAssistantFromMaster(request);
+    }
+        
+    else if (action === getVersionReport) {
+      return handleGetVersionReport();
+    }
+     else  if (action === trackAppVersion) {
+      return handleTrackAppVersion(request);
+    }
+    else if (action === getAllDataBulk) {
+  return handleGetAllDataBulk(request);
+}
+
+
+    return responseError(Bilinmeyen aksiyon  + action);
+
+  } catch (err) {
+    Logger.log(❌ doPost veya Sıralama Hatası  + err.toString());
+    return responseError(Sunucu Sıraİşlem Hatası  + err.toString());
+  }
+  finally {
+     🔥 2. ADIM İşlem bittiğinde kilidi kaldır ki sıradaki sonraki istek içeri girsin
+    lock.releaseLock();
+    Logger.log(🔓 [KİLİT SERBEST] Sıradaki işlem için kilit açıldı.);
+  }
+}
+
+
+ =========================================================================
+ YAZMA ACTION'LARI bunlar kısa kilit alır (sheet'e setValueappend yapıyorlar)
+ Okuma action'ları listede YOK - kilitsiz, tamamen paralel çalışırlar.
+ =========================================================================
+var WRITE_ACTIONS = {
+  insert true,
+  registerEverywhere true,
+  assignCoachToGroup true,
+  assignStudentToGroup true,
+  updateGroup true,
+  updateUser true,
+  saveAttendance true,
+  saveBulkAttendance true,
+  removeStudentFromGroup true,
+  deactivateUser true,
+  updateNotification true,
+  updateLastLogin true,
+  updateUserAmount true,
+  updatePassword true,
+  uploadImage true,
+  updateFcmToken true,
+  updateGroupSchedule true,
+  transferStudentToGroup true,
+  deletePayment true,
+  updatePayment true,
+  transferAssistant true,
+  removeAssistant true,
+  assignAssistantToMaster true,
+  removeAssistantFromMaster true,
+  trackAppVersion true,
+    deleteExtra true ,   🔥 YENİ
+  insertExtra true,
+  updateExtra true
+  
+};
+
+function doPost(e) {
+  try {
+    var requestBody = e.postData && e.postData.contents  e.postData.contents  ;
+    if (!requestBody) return responseError(POST içeriği boş.);
+
+    var request = JSON.parse(requestBody);
+    var action = request.action;
+    Logger.log(📥 doPost action  + action);
+
+    if (!action) return responseError(action gerekli.);
+
+     🔒 SADECE yazma action'ları kısa kilit alır. Okumalar (getAllDataBulk,
+     login, getNotifications, getImageUrl, getVersionReport, checkMonthlyFees,
+     getAssistantsForCoach) kilit görmez - paralel çalışır.
+    if (WRITE_ACTIONS[action]) {
+      var lock = LockService.getScriptLock();
+       tryLock 15 sn içinde sıra gelmezse meşgul dön, client tekrar denesin.
+       waitLock gibi 30 sn boyunca thread'i tutup timeout'a düşmez.
+      if (!lock.tryLock(15000)) {
+        return responseError(BUSY_RETRY);  client bunu görünce backoff'la tekrar denemeli
+      }
+      try {
+        return route(request, action);
+      } finally {
+        lock.releaseLock();
+      }
+    }
+
+     Okuma yolu kilitsiz
+    return route(request, action);
+
+  } catch (err) {
+    Logger.log(❌ doPost hatası  + err.toString());
+    return responseError(Sunucu hatası  + err.toString());
+  }
+}
+
+ =========================================================================
+ TÜM ACTION YÖNLENDİRMESİ (senin orijinal doPost'undaki her case burada)
+ =========================================================================
+function route(request, action) {
+  switch (action) {
+
+     ---- OKUMALAR (kilitsiz) ----
+    case getAllDataBulk
+      return handleGetAllDataBulk(request);
+    case login
+      return handleLogin(request.email, request.password);
+    case getNotifications
+      return responseSuccess(getNotificationsForUser(request.user_id));
+    case getImageUrl
+      return handleGetImageUrl(request.file_name, request.folder);
+    case getVersionReport
+      return handleGetVersionReport();
+    case checkMonthlyFees
+      return handleCheckMonthlyFees();
+    case getAssistantsForCoach
+      return handleGetAssistantsForCoach(request.master_user_id);
+
+     ---- YOKLAMA ----
+    case saveBulkAttendance
+      return handleSaveBulkAttendance(request.data);  Parça 2'de yazacağız
+    case saveAttendance
+      return handleSaveAttendance(request.data);
+case getUpdatedData
+  return handleGetUpdatedData(request);
+     ---- GENEL EKLE  KULLANICI ----
+    case insert
+      if (!request.table) return responseError(Tablo adı gerekli.);
+      return handleInsert(request.table, request.data);
+    case registerEverywhere
+      return handleRegisterEverywhere(request.data);
+    case updateUser
+      return handleUpdateUser(request.data);
+    case deactivateUser
+      return handleDeactivateUser(request.user_id);
+    case updateLastLogin
+      return handleUpdateLastLogin(request.user_id, request.last_login);
+    case updateUserAmount
+      return handleUpdateUserAmount(request.user_id, request.amount);
+    case updatePassword
+      return handleUpdatePassword(request.user_id, request.password_hash);
+    case updateFcmToken
+      return handleUpdateFcmToken(request.user_id, request.fcm_token);
+    case send2FACode
+      return handleSend2FACode(request.phone, request.code);
+
+     ---- GRUP İŞLEMLERİ ----
+    case assignCoachToGroup
+      return handleAssignCoachToGroup(request.group_id, request.coach_id);
+    case assignStudentToGroup
+      return handleAssignStudentToGroup(request.student_id, request.group_id, request.is_active);
+    case updateGroup
+      return handleUpdateGroup(request.group_id, request.data);
+    case updateGroupSchedule
+      return handleUpdateGroupSchedule(request.group_id, request.schedule);
+    case removeStudentFromGroup
+      return handleRemoveStudentFromGroup(request.student_id, request.group_id);
+    case transferStudentToGroup
+      return handleTransferStudentToGroup(request.student_id, request.new_group_id);
+
+     ---- ÖDEME ----
+    case deletePayment
+      return handleDeletePayment(request.payments_id);
+    case updatePayment
+      return handleUpdatePayment(request.payments_id, request.data);
+
+     ---- BİLDİRİM ----
+    case updateNotification
+      return handleUpdateNotification(request.notifications_id, request.is_read);
+
+     ---- FOTOĞRAF ----
+    case uploadImage
+      return handleUploadImage(request.file_name, request.file_data, request.folderName);
+ case deleteExtra   return handleDeleteExtra_(request);    🔥 YENİ
+    case getExtraBulk  return handleGetExtraBulk_();
+     ---- YARDIMCI ANTRENÖR ----
+    case transferAssistant
+      return handleTransferAssistant(request.assistant_user_id, request.old_master_user_id, request.new_master_user_id);
+    case removeAssistant
+      return handleRemoveAssistant(request.assistant_user_id, request.master_user_id);
+    case assignAssistantToMaster
+      return assignAssistantToMaster(request);
+    case removeAssistantFromMaster
+      return removeAssistantFromMaster(request);
+
+     ---- SÜRÜM TAKİBİ ----
+    case trackAppVersion
+      return handleTrackAppVersion(request);
+   case insertExtra   return handleInsertExtra_(request);
+    case updateExtra   return handleUpdateExtra_(request);
+    case getExtraBulk  return handleGetExtraBulk_();
+    default
+      return responseError(Bilinmeyen aksiyon  + action);
+  }
+}
+ =========================================================================
+ 6. KISIM LOGIN
+ =========================================================================
+
+function handleLogin(email, password) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(users);
+  if (!sheet) return responseError(Users sayfası bulunamadı.);
+
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var emailColIndex = headers.indexOf(email);
+  var passColIndex = headers.indexOf(password_hash);
+  var lastLoginColIndex = headers.indexOf(last_login);
+
+  var foundUser = null;
+  var foundRowIndex = -1;
+
+  for (var i = 1; i  values.length; i++) {
+    var sheetEmail = (values[i][emailColIndex]  ).toString().trim();
+    var sheetPass = (values[i][passColIndex]  ).toString().trim();
+    var reqEmail = (email  ).toString().trim();
+    var reqPass = (password  ).toString().trim();
+
+    if (sheetEmail === reqEmail && sheetPass === reqPass) {
+      foundUser = {};
+      headers.forEach(function(h, idx) {
+        foundUser[h] = values[i][idx];
+      });
+      foundRowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (foundUser) {
+    if (lastLoginColIndex !== -1) {
+      var now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      sheet.getRange(foundRowIndex, lastLoginColIndex + 1).setValue(now);
+      foundUser[last_login] = now;
+    }
+    foundUser[password_hash] = ;
+    return responseSuccess({ user foundUser });
+  }
+
+  return responseError(E-posta veya şifre hatalı.);
+}
+
+function _attDay(v) {
+  if (v instanceof Date) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), yyyy-MM-dd);
+  }
+  var s = (v === null  v === undefined)    v.toString().trim();
+  if (s.indexOf(T) !== -1) s = s.split(T)[0];
+  if (s.indexOf( ) !== -1) s = s.split( )[0];
+  return s;
+}
+ 
+ =========================================================================
+ TOPLU YOKLAMA (APPEND-ONLY) — arama yok, tek setValues, kısa kilit
+ =========================================================================
+function handleSaveBulkAttendance(rows) {
+  try {
+    if (!rows  !rows.length) return responseError(Boş yoklama listesi.);
+ 
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(attendances);
+    if (!sheet) return responseError(attendances sayfası bulunamadı!);
+ 
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+    var now = new Date().toISOString();
+ 
+    var idCol      = headers.indexOf(attendances_id);
+    var studentCol = headers.indexOf(student_id);
+    var groupCol   = headers.indexOf(groups_id);
+    var dateCol    = headers.indexOf(attendance_date);
+    var statusCol  = headers.indexOf(status);
+    var takenByCol = headers.indexOf(taken_by);
+    var noteCol    = headers.indexOf(note);
+    var updatedCol = headers.indexOf(updated_at);
+ 
+    if (studentCol === -1  groupCol === -1  dateCol === -1) {
+      return responseError(Gerekli sütunlar bulunamadı!);
+    }
+ 
+     Var olan satırları öğrencigrupgün ile indeksle + en büyük ID
+    var rowByKey = {};
+    var maxId = 0;
+    for (var i = 1; i  values.length; i++) {
+      var sId = (values[i][studentCol]  ).toString().trim();
+      var gId = (values[i][groupCol]    ).toString().trim();
+      var dY  = _attDay(values[i][dateCol]);            🔥 Date-güvenli
+      if (sId && gId && dY) rowByKey[sId +  + gId +  + dY] = i + 1;
+ 
+      var n = parseInt((values[i][idCol]  ).toString().trim(), 10);
+      if (!isNaN(n) && n  maxId) maxId = n;
+    }
+    var nextId = maxId + 1;
+ 
+    function buildRow(rec) {
+      var arr = [];
+      for (var h = 0; h  headers.length; h++) {
+        arr.push(rec[headers[h]] !== undefined  rec[headers[h]]  );
+      }
+      return arr;
+    }
+ 
+    var newRows = [];
+    var pendingIndexByKey = {};
+    var updated = 0, inserted = 0;
+ 
+    for (var r = 0; r  rows.length; r++) {
+      var d = rows[r]  {};
+      var studentId = (d.student_id  ).toString().trim();
+      var groupsId  = (d.groups_id   ).toString().trim();
+      var attDateRaw = (d.attendance_date  ).toString().trim();
+      if (!studentId  !groupsId  !attDateRaw) continue;
+ 
+      var status  = (d.status  ).toString().trim();
+      var takenBy = (d.taken_by  ).toString().trim();
+      var note    = (d.note  ).toString();
+      var key = studentId +  + groupsId +  + _attDay(attDateRaw);   🔥
+ 
+      if (rowByKey[key]) {
+         🔁 AYNI GÜN VAR → GÜNCELLE (yeni satır AÇMAZ)
+        var rw = rowByKey[key];
+        if (statusCol  !== -1) sheet.getRange(rw, statusCol  + 1).setValue(status);
+        if (takenByCol !== -1 && takenBy) sheet.getRange(rw, takenByCol + 1).setValue(takenBy);
+        if (noteCol    !== -1) sheet.getRange(rw, noteCol + 1).setValue(note);
+        if (updatedCol !== -1) sheet.getRange(rw, updatedCol + 1).setValue(now);
+        updated++;
+ 
+      } else if (pendingIndexByKey[key] !== undefined) {
+        var pi = pendingIndexByKey[key];
+        newRows[pi] = buildRow({
+          attendances_id newRows[pi][idCol],
+          groups_id groupsId, student_id studentId,
+          taken_by takenBy, attendance_date attDateRaw,
+          status status, note note, updated_at now
+        });
+ 
+      } else {
+         ➕ YENİ → SIRALI numeric ID
+        pendingIndexByKey[key] = newRows.length;
+        newRows.push(buildRow({
+          attendances_id nextId++,
+          groups_id groupsId, student_id studentId,
+          taken_by takenBy, attendance_date attDateRaw,
+          status status, note note, updated_at now
+        }));
+        inserted++;
+      }
+    }
+ 
+    if (newRows.length) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, headers.length)
+           .setValues(newRows);
+    }
+    SpreadsheetApp.flush();
+ 
+    return responseSuccess({ success true, inserted inserted, updated updated });
+ 
+  } catch (error) {
+    Logger.log(❌ handleSaveBulkAttendance  + error.toString());
+    return responseError(Toplu yoklama hatası  + error.toString());
+  }
+}
+
+ =========================================================================
+ 7. KISIM KAYIT OLMA (YARDIMCI ANTRENÖR - coach satırı OLUŞMAZ!)
+ =========================================================================
+
+function handleRegisterEverywhere(data) {
+  Logger.log(=== REGISTER START ===);
+  if (!data  !data.user_info) return responseError(Eksik veri user_info gerekli.);
+
+  var userInfo = data.user_info;
+  var email = userInfo.email;
+
+  if (!email  email.toString().trim() === ) return responseError(E-posta adresi zorunludur!);
+  if (checkIfEmailExists(email)) return responseError(Bu e-posta adresi zaten kullanılıyor!);
+
+   🔥 Flutter'dan seçilen ANA HOCALARIN USER ID'lerini al (726,728,730 gibi)
+  var selectedMasterUserIds = [];
+  if (userInfo.supervisor_coach_id) {
+    var raw = userInfo.supervisor_coach_id.toString().trim();
+    selectedMasterUserIds = raw.split(,)
+      .map(function(id) { return id.trim(); })
+      .filter(function(id) { return id !== ; });
+    Logger.log(🔗 Seçilen ana hoca USER ID'leri (ham)  + JSON.stringify(selectedMasterUserIds));
+    delete userInfo.supervisor_coach_id;
+  } else {
+    Logger.log(⚠️ userInfo.supervisor_coach_id alanı GELMEDİ (boşundefined). Gönderilen userInfo  + JSON.stringify(userInfo));
+  }
+
+   📌 1. USERS'a kaydet
+  var userResult = apiInsertDataInternal(users, userInfo);
+  if (!userResult.success) return responseError(Kullanıcı eklenemedi  + userResult.error);
+
+  var newUserId = userResult.id;
+  var role = (userInfo.role  ).toLowerCase();
+
+  Logger.log(✅ Kullanıcı oluşturuldu! ID  + newUserId + , Rol  + role);
+
+   📌 2. ÖĞRENCİ İSE group_students'a ekle
+  if (role === student  role === öğrenci) {
+    var groupId = data.group_id  WAITING;
+    apiInsertDataInternal(group_students, {
+      student_id newUserId.toString(),
+      groups_id groupId,
+      enrolled_at new Date().toISOString().replace('T', ' ').substring(0, 19),
+      is_active TRUE
+    });
+  }
+
+   📌 3. YARDIMCI ANTRENÖR İSE coaches'a KAYDETME!
+   🔥🔥🔥 SADECE ANA HOCALARIN supervisor'ına EKLE! 🔥🔥🔥
+  if (role === assistant_coach  role === yardımcı_antrenör) {
+
+    if (selectedMasterUserIds.length  0) {
+      var linkResult = addAssistantToMasterCoaches(newUserId.toString(), selectedMasterUserIds);
+      Logger.log(📋 Supervisor bağlama sonucu  + JSON.stringify(linkResult));
+
+      if (linkResult.notFound.length  0) {
+        Logger.log(⚠️ Bulunamayan ana hocalar (coaches sayfasında user_id eşleşmedi)  + JSON.stringify(linkResult.notFound));
+      }
+    } else {
+      Logger.log(⚠️ Hiç ana hoca seçilmedi! Yardımcı eklenemedi (supervisor boş kaldı).);
+    }
+
+  } else if (role === coach  role === antrenör) {
+     🔥 NORMAL ANTRENÖR KAYDI (supervisor'ı BOŞ - ANA ANTRENÖR)
+    var coachData = {
+      coach_id ,
+      user_id newUserId.toString(),
+      branches_id userInfo.branches_id  1,
+      sports_id data.sports_id  ,
+      bio ,
+      certificate_info ,
+      monthly_salary userInfo.amount  0,
+      hired_at new Date().toISOString().replace('T', ' ').substring(0, 19),
+      supervisor_coach_id   🔥 BOŞ - ANA ANTRENÖR
+    };
+
+    Logger.log(📋 Normal coach verisi  + JSON.stringify(coachData));
+    var coachInsertResult = apiInsertDataInternal(coaches, coachData);
+    Logger.log(📋 Coach insert sonucu  + JSON.stringify(coachInsertResult));
+  }
+
+   📌 4. VELİ İSE parent_student'a ekle
+  if (data.parent_info) {
+    var parentInfo = data.parent_info;
+    var parentResult = apiInsertDataInternal(users, {
+      first_name parentInfo.first_name  ,
+      last_name parentInfo.last_name  ,
+      email parentInfo.email  ,
+      phone parentInfo.phone  ,
+      password_hash userInfo.password_hash  default,
+      role parent,
+      branches_id userInfo.branches_id  1,
+      is_active TRUE,
+      created_at new Date().toISOString().replace('T', ' ').substring(0, 19)
+    });
+
+    if (parentResult.success) {
+      apiInsertDataInternal(parent_student, {
+        parent_id parentResult.id.toString(),
+        student_id newUserId.toString()
+      });
+      Logger.log(✅ Veli eklendi ve ilişkilendirildi!);
+    }
+  }
+
+  Logger.log(=== REGISTER COMPLETE ===);
+
+  return responseSuccess({
+    message Kayıt başarılı!,
+    user_id newUserId,
+    role role,
+    is_assistant (role === assistant_coach  role === yardımcı_antrenör)
+  });
+}
+
+ =========================================================================
+ 8. KISIM YARDIMCI ANTRENÖR YÖNETİMİ
+ =========================================================================
+
+
+  🔥 ORTAK FONKSİYON Bir yardımcı antrenörü, verilen ana hoca user_id listesinin
+  her birinin coaches satırındaki supervisor_coach_id sütununa ekler.
+ 
+  Bu fonksiyon hem registerEverywhere'de hem de manuel yardımcı ata akışlarında
+  kullanılabilir, böylece eşleşme mantığı TEK YERDE yönetilir ve tutarlı olur.
+ 
+  @param {string} assistantUserId - Yardımcının users.app ID'si
+  @param {string[]} masterUserIds - Ana hocaların users.app ID'leri (coaches.user_id ile eşleşecek)
+  @returns {{linked string[], notFound string[]}}
+ 
+function addAssistantToMasterCoaches(assistantUserId, masterUserIds) {
+  var result = { linked [], notFound [] };
+
+  var assistantIdStr = assistantUserId.toString().trim();
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var coachSheet = ss.getSheetByName(coaches);
+  if (!coachSheet) {
+    Logger.log(❌ coaches sayfası bulunamadı!);
+    result.notFound = masterUserIds;
+    return result;
+  }
+
+  var coachValues = coachSheet.getDataRange().getValues();
+  if (coachValues.length  2) {
+    Logger.log(❌ coaches sayfası boş (sadece başlık var veya hiç yok).);
+    result.notFound = masterUserIds;
+    return result;
+  }
+
+  var coachHeaders = coachValues[0];
+  var userIdCol = coachHeaders.indexOf(user_id);
+  var supervisorCol = coachHeaders.indexOf(supervisor_coach_id);
+
+  if (userIdCol === -1  supervisorCol === -1) {
+    Logger.log(❌ coaches sayfasında 'user_id' veya 'supervisor_coach_id' sütunu bulunamadı! Headers  + JSON.stringify(coachHeaders));
+    result.notFound = masterUserIds;
+    return result;
+  }
+
+   🔎 Tüm coaches.user_id değerlerini normalize edip logla (debug için kritik)
+  var allCoachUserIds = [];
+  for (var r = 1; r  coachValues.length; r++) {
+    var rawVal = coachValues[r][userIdCol];
+    allCoachUserIds.push(rawVal === null  rawVal === undefined  (boş)  rawVal.toString().trim());
+  }
+  Logger.log(📋 coaches sayfasındaki mevcut user_id'ler  + JSON.stringify(allCoachUserIds));
+
+  for (var m = 0; m  masterUserIds.length; m++) {
+    var masterUserId = masterUserIds[m].toString().trim();
+
+    var masterRowIndex = -1;
+    for (var i = 1; i  coachValues.length; i++) {
+      var cellVal = coachValues[i][userIdCol];
+      var coachUserId = (cellVal === null  cellVal === undefined)    cellVal.toString().trim();
+
+       🔥 Hem string hem sayısal karşılaştırma yap (Sheets bazen sayıyı number olarak tutar)
+      if (coachUserId === masterUserId  (coachUserId !==  && Number(coachUserId) === Number(masterUserId))) {
+        masterRowIndex = i + 1;  1-indexed sheet row
+        break;
+      }
+    }
+
+    if (masterRowIndex === -1) {
+      Logger.log(⚠️ Ana hoca coaches sayfasında BULUNAMADI user_id= + masterUserId);
+      result.notFound.push(masterUserId);
+      continue;
+    }
+
+    var currentSupervisorRaw = coachValues[masterRowIndex - 1][supervisorCol];
+    var currentSupervisor = (currentSupervisorRaw === null  currentSupervisorRaw === undefined)
+       
+       currentSupervisorRaw.toString().trim();
+
+    var ids = currentSupervisor === 
+       []
+       currentSupervisor.split(,).map(function(id) { return id.trim(); }).filter(function(id) { return id !== ; });
+
+    if (ids.indexOf(assistantIdStr) === -1) {
+      ids.push(assistantIdStr);
+    }
+
+    var newSupervisorValue = ids.join(,);
+
+    coachSheet.getRange(masterRowIndex, supervisorCol + 1).setValue(newSupervisorValue);
+    SpreadsheetApp.flush();
+
+    Logger.log(✅ Ana hocanın (user_id= + masterUserId + , satır= + masterRowIndex + ) supervisor_coach_id güncellendi  + newSupervisorValue);
+    result.linked.push(masterUserId);
+  }
+
+  return result;
+}
+
+
+  🔥 Yardımcı antrenörü bir ana hocadan diğerine TAŞI
+ 
+function handleTransferAssistant(assistantUserId, oldMasterUserId, newMasterUserId) {
+  Logger.log(📌 handleTransferAssistant BAŞLADI);
+  Logger.log(   Yardımcı  + assistantUserId);
+  Logger.log(   Eski hoca  + oldMasterUserId);
+  Logger.log(   Yeni hoca  + newMasterUserId);
+
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var coachSheet = ss.getSheetByName(coaches);
+    var coachValues = coachSheet.getDataRange().getValues();
+    var coachHeaders = coachValues[0];
+
+    var userIdCol = coachHeaders.indexOf(user_id);
+    var supervisorCol = coachHeaders.indexOf(supervisor_coach_id);
+
+     1. ESKİ HOCADAN KALDIR
+    if (oldMasterUserId) {
+      var oldRowIndex = -1;
+      for (var i = 1; i  coachValues.length; i++) {
+        var coachUserId = coachValues[i][userIdCol] != null  coachValues[i][userIdCol].toString().trim()  ;
+        if (coachUserId === oldMasterUserId.toString().trim()) {
+          oldRowIndex = i + 1;
+          break;
+        }
+      }
+
+      if (oldRowIndex !== -1) {
+        var oldSupervisor = coachValues[oldRowIndex - 1][supervisorCol] != null  coachValues[oldRowIndex - 1][supervisorCol].toString().trim()  ;
+        var oldIds = oldSupervisor.split(,).map(function(id) { return id.trim(); }).filter(function(id) { return id !==  && id !== assistantUserId.toString().trim(); });
+        var newOldSupervisor = oldIds.join(,);
+
+        coachSheet.getRange(oldRowIndex, supervisorCol + 1).setValue(newOldSupervisor);
+        Logger.log(✅ Eski hocadan ( + oldMasterUserId + ) kaldırıldı  + assistantUserId);
+      } else {
+        Logger.log(⚠️ Eski hoca bulunamadı  + oldMasterUserId);
+      }
+    }
+
+     2. YENİ HOCAYA EKLE (ortak fonksiyonu kullan)
+    var linkResult = addAssistantToMasterCoaches(assistantUserId.toString(), [newMasterUserId.toString()]);
+
+    if (linkResult.notFound.length  0) {
+      return responseError(Yeni hoca coaches sayfasında bulunamadı  + newMasterUserId);
+    }
+
+    return responseSuccess({
+      message ✅ Yardımcı başarıyla taşındı!,
+      assistant_user_id assistantUserId,
+      old_master oldMasterUserId,
+      new_master newMasterUserId
+    });
+
+  } catch (error) {
+    Logger.log(❌ Transfer hatası  + error.toString());
+    return responseError(Transfer hatası  + error.toString());
+  }
+}
+
+
+  🔥 Yardımcı antrenörü TAMAMEN SİL (tüm hocalardan kaldır)
+ 
+function handleRemoveAssistant(assistantUserId, masterUserId) {
+  Logger.log(📌 handleRemoveAssistant BAŞLADI);
+  Logger.log(   Yardımcı  + assistantUserId);
+  Logger.log(   Hoca  + (masterUserId  TÜMÜ));
+
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var coachSheet = ss.getSheetByName(coaches);
+    var coachValues = coachSheet.getDataRange().getValues();
+    var coachHeaders = coachValues[0];
+
+    var userIdCol = coachHeaders.indexOf(user_id);
+    var supervisorCol = coachHeaders.indexOf(supervisor_coach_id);
+
+    var removedCount = 0;
+
+    for (var i = 1; i  coachValues.length; i++) {
+      var coachUserId = coachValues[i][userIdCol] != null  coachValues[i][userIdCol].toString().trim()  ;
+
+      if (masterUserId && coachUserId !== masterUserId.toString().trim()) continue;
+
+      var currentSupervisor = coachValues[i][supervisorCol] != null  coachValues[i][supervisorCol].toString().trim()  ;
+      if (currentSupervisor === ) continue;
+
+      var ids = currentSupervisor.split(,).map(function(id) { return id.trim(); }).filter(function(id) { return id !==  && id !== assistantUserId.toString().trim(); });
+      var newSupervisor = ids.join(,);
+
+      coachSheet.getRange(i + 1, supervisorCol + 1).setValue(newSupervisor);
+      removedCount++;
+      Logger.log(✅  + coachUserId +  hocasından kaldırıldı  + assistantUserId);
+    }
+
+    return responseSuccess({
+      message ✅ Yardımcı  + (masterUserId  hocadan  tüm hocalardan) +  kaldırıldı!,
+      assistant_user_id assistantUserId,
+      removed_from_count removedCount
+    });
+
+  } catch (error) {
+    Logger.log(❌ Silme hatası  + error.toString());
+    return responseError(Silme hatası  + error.toString());
+  }
+}
+
+
+  🔥 Bir hocaya bağlı tüm yardımcıları GETİR
+ 
+function handleGetAssistantsForCoach(masterUserId) {
+  Logger.log(📌 handleGetAssistantsForCoach BAŞLADI);
+  Logger.log(   Hoca  + masterUserId);
+
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var coachSheet = ss.getSheetByName(coaches);
+    var coachValues = coachSheet.getDataRange().getValues();
+    var coachHeaders = coachValues[0];
+
+    var userIdCol = coachHeaders.indexOf(user_id);
+    var supervisorCol = coachHeaders.indexOf(supervisor_coach_id);
+
+    var assistants = [];
+
+    for (var i = 1; i  coachValues.length; i++) {
+      var coachUserId = coachValues[i][userIdCol] != null  coachValues[i][userIdCol].toString().trim()  ;
+      if (coachUserId === masterUserId.toString().trim()) {
+        var supervisor = coachValues[i][supervisorCol] != null  coachValues[i][supervisorCol].toString().trim()  ;
+        if (supervisor !== ) {
+          var ids = supervisor.split(,).map(function(id) { return id.trim(); }).filter(function(id) { return id !== ; });
+          assistants = ids;
+        }
+        break;
+      }
+    }
+
+    Logger.log(✅  + masterUserId +  hocasına bağlı  + assistants.length +  yardımcı bulundu);
+
+    return responseSuccess({
+      master_user_id masterUserId,
+      assistants assistants
+    });
+
+  } catch (error) {
+    Logger.log(❌ Getir hatası  + error.toString());
+    return responseError(Getir hatası  + error.toString());
+  }
+}
+
+ =========================================================================
+ 8b. KISIM BAKIM  DEBUG ARAÇLARI (🔥 YENİ)
+ =========================================================================
+
+
+  🛠️ coaches sayfasında coach_id (A sütunu) boş kalan satırları otomatik
+  sıralı bir ID ile doldurur. Ekran görüntüsünde A sütunu tamamen boştu —
+  bu fonksiyon o satırları onarır, eşleşme mantığını ETKİLEMEZ
+  (eşleşme zaten user_id üzerinden yapılıyor) ama veri bütünlüğü için iyidir.
+ 
+function repairCoachIds() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(coaches);
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert(❌ coaches sayfası bulunamadı.);
+    return;
+  }
+
+  var values = sheet.getDataRange().getValues();
+  if (values.length  2) {
+    SpreadsheetApp.getUi().alert(ℹ️ coaches sayfasında veri yok.);
+    return;
+  }
+
+  var headers = values[0];
+  var idCol = headers.indexOf(coach_id);
+  if (idCol === -1) {
+    SpreadsheetApp.getUi().alert(❌ coach_id sütunu bulunamadı.);
+    return;
+  }
+
+  var maxId = 0;
+  for (var i = 1; i  values.length; i++) {
+    var v = values[i][idCol];
+    if (v !== null && v !== undefined && v.toString().trim() !== ) {
+      var n = parseInt(v.toString().trim());
+      if (!isNaN(n) && n  maxId) maxId = n;
+    }
+  }
+
+  var nextId = maxId + 1;
+  var fixedCount = 0;
+
+  for (var i = 1; i  values.length; i++) {
+    var v = values[i][idCol];
+    if (v === null  v === undefined  v.toString().trim() === ) {
+      sheet.getRange(i + 1, idCol + 1).setValue(nextId);
+      Logger.log(✅ coach_id boş satır dolduruldu - satır  + (i + 1) +  =  + nextId);
+      nextId++;
+      fixedCount++;
+    }
+  }
+
+  SpreadsheetApp.getUi().alert(✅  + fixedCount +  satırın coach_id'si dolduruldu.);
+}
+
+
+  🔎 Manuel debug Belirli bir ana hoca user_id'sinin coaches sayfasında
+  bulunup bulunmadığını ve hangi satırda olduğunu UI alert ile gösterir.
+  Apps Script editöründe bu fonksiyonu seçip Çalıştır diyerek
+  masterUserIdToTest değişkenini değiştirip test edebilirsin.
+ 
+function debugSupervisorMatch() {
+  var masterUserIdToTest = 726;  🔥 Test etmek istediğin user_id'yi buraya yaz
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var coachSheet = ss.getSheetByName(coaches);
+  var coachValues = coachSheet.getDataRange().getValues();
+  var coachHeaders = coachValues[0];
+  var userIdCol = coachHeaders.indexOf(user_id);
+
+  var report = 🔎 coaches sayfası user_id sütunu (Col  + (userIdCol + 1) + )nn;
+  for (var i = 1; i  coachValues.length; i++) {
+    var v = coachValues[i][userIdCol];
+    var strV = v === null  v === undefined  (boş)  v.toString();
+    var match = (strV.trim() === masterUserIdToTest)    -- EŞLEŞTİ  ;
+    report += Satır  + (i + 1) +  [ + strV + ] + match + n;
+  }
+
+  SpreadsheetApp.getUi().alert(report);
+}
+
+ =========================================================================
+ 9. KISIM VERİ EKLEME (ALTYAPI)
+ =========================================================================
+
+function handleInsert(sheetName, dataObject) {
+  Logger.log(📝 handleInsert  + sheetName);
+   🔥 ÖDEME İÇİN ÖZEL KONTROL
+  if (sheetName === payments) {
+    return handleInsertPayment(dataObject);
+  }
+
+  if (sheetName === users) {
+    var email = dataObject.email;
+    if (!email  email.toString().trim() === ) {
+      return responseError(E-posta adresi zorunludur!);
+    }
+
+    var emailExists = checkIfEmailExists(email);
+    if (emailExists) {
+      return responseError(Bu e-posta adresi zaten kullanılıyor!);
+    }
+  }
+
+  var result = apiInsertDataInternal(sheetName, dataObject);
+
+  if (sheetName === notifications && result.success) {
+    triggerFCMForNotification(dataObject);
+  }
+
+  if (result.success) {
+    return responseSuccess({ message Kayıt eklendi., id result.id });
+  } else {
+    return responseError(result.error);
+  }
+}
+
+ =========================================================================
+ ÖDEME EKLE  GÜNCELLE (Aynı kayıt varsa üzerine yaz)
+ =========================================================================
+function handleInsertPayment(paymentData) {
+  try {
+    Logger.log(💰 Ödeme işleniyor  + JSON.stringify(paymentData));
+
+    var studentId = paymentData.student_id.toString().trim()  ;
+    var groupsId = paymentData.groups_id.toString().trim()  ;
+    var dueDate = paymentData.due_date.toString().trim()  ;
+    var amount = paymentData.amount.toString().trim()  ;
+    var paidDate = paymentData.paid_date.toString().trim()  ;
+    var status = paymentData.status.toString().trim()  ;
+    var paymentMethod = paymentData.payment_method.toString().trim()  ;
+    var recordedBy = paymentData.recorded_by.toString().trim()  ;
+    var note = paymentData.note.toString().trim()  ;
+
+    if (!studentId  !groupsId  !dueDate) {
+      return responseError(student_id, groups_id ve due_date zorunludur!);
+    }
+
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(payments);
+    if (!sheet) {
+      return responseError(payments sayfası bulunamadı!);
+    }
+
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+
+     Sütun indekslerini bul
+    var studentIdCol = headers.indexOf(student_id);
+    var groupsIdCol = headers.indexOf(groups_id);  🔥 DÜZELTİLDİ tek tanım, tutarlı isim
+    var dueDateCol = headers.indexOf(due_date);
+    var amountCol = headers.indexOf(amount);
+    var paidDateCol = headers.indexOf(paid_date);
+    var statusCol = headers.indexOf(status);
+    var paymentMethodCol = headers.indexOf(payment_method);
+    var recordedByCol = headers.indexOf(recorded_by);
+    var noteCol = headers.indexOf(note);
+    var idCol = headers.indexOf(payments_id);
+
+    if (studentIdCol === -1  groupsIdCol === -1  dueDateCol === -1) {
+      return responseError(Gerekli sütunlar bulunamadı!);
+    }
+
+     🔥 AYNI ÖĞRENCİ + AYNI GRUP + AYNI AY (due_date) KAYDI VAR MI
+    var existingRowIndex = -1;
+    var existingId = ;
+
+     dueDate'in sadece YYYY-MM kısmını al (gün önemli değil, ay kontrolü)
+    var targetMonth = dueDate.substring(0, 7);  2026-06
+
+    for (var i = 1; i  values.length; i++) {
+      var sheetStudentId = values[i][studentIdCol].toString().trim()  ;
+      var sheetGroupsId = values[i][groupsIdCol].toString().trim()  ;  🔥 DÜZELTİLDİ
+      var sheetDueDate = values[i][dueDateCol].toString().trim()  ;
+
+       Sheet'teki tarihin sadece YYYY-MM kısmını al
+      var sheetMonth = sheetDueDate.substring(0, 7);
+
+      if (sheetStudentId === studentId &&
+          sheetGroupsId === groupsId &&
+          sheetMonth === targetMonth) {
+        existingRowIndex = i + 1;  1-indexed sheet row
+        existingId = values[i][idCol].toString().trim()  ;
+        Logger.log(🔍 Aynı ay kaydı bulundu! Satır  + existingRowIndex + , ID  + existingId);
+        break;
+      }
+    }
+
+     📌 EĞER KAYIT VARSA → GÜNCELLE
+    if (existingRowIndex !== -1) {
+      Logger.log(🔄 Mevcut ödeme güncelleniyor...);
+
+      if (amountCol !== -1 && amount) {
+        sheet.getRange(existingRowIndex, amountCol + 1).setValue(amount);
+      }
+      if (paidDateCol !== -1 && paidDate) {
+        sheet.getRange(existingRowIndex, paidDateCol + 1).setValue(paidDate);
+      }
+      if (statusCol !== -1 && status) {
+        sheet.getRange(existingRowIndex, statusCol + 1).setValue(status);
+      }
+      if (paymentMethodCol !== -1 && paymentMethod) {
+        sheet.getRange(existingRowIndex, paymentMethodCol + 1).setValue(paymentMethod);
+      }
+      if (recordedByCol !== -1 && recordedBy) {
+        sheet.getRange(existingRowIndex, recordedByCol + 1).setValue(recordedBy);
+      }
+      if (noteCol !== -1 && note) {
+        sheet.getRange(existingRowIndex, noteCol + 1).setValue(note);
+      }
+
+      SpreadsheetApp.flush();
+
+      return responseSuccess({
+        message ✅ Ödeme güncellendi!,
+        id existingId,
+        student_id studentId,
+        groups_id groupsId,
+        due_date dueDate,
+        amount amount,
+        status status,
+        updated true
+      });
+    }
+
+     📌 EĞER KAYIT YOKSA → YENİ EKLE
+    Logger.log(➕ Yeni ödeme kaydı ekleniyor...);
+    var result = apiInsertDataInternal(payments, paymentData);
+
+    if (result.success) {
+      return responseSuccess({
+        message ✅ Ödeme kaydedildi!,
+        id result.id,
+        student_id studentId,
+        groups_id groupsId,
+        due_date dueDate,
+        amount amount,
+        status status,
+        updated false
+      });
+    } else {
+      return responseError(result.error);
+    }
+
+  } catch (error) {
+    Logger.log(❌ handleInsertPayment hatası  + error.toString());
+    return responseError(Ödeme hatası  + error.toString());
+  }
+}
+function handleInsertPayment(paymentData) {
+  try {
+    Logger.log(💰 Ödeme işleniyor  + JSON.stringify(paymentData));
+
+     Hem 'student_id' hem alternatiflerini güvene al
+    var studentId = (paymentData.student_id  paymentData.studentId).toString().trim()  ;
+    
+     🔥 KESİN ÇÖZÜM Hem Flutter'dan gelebilecek 'group_id'yi hem de 'groups_id'yi kontrol et!
+    var groupsId = (paymentData.groups_id  paymentData.group_id  paymentData.groupsId  paymentData.groupId).toString().trim()  ;
+    
+    var dueDate = (paymentData.due_date  paymentData.dueDate).toString().trim()  ;
+    
+    var amount = paymentData.amount.toString().trim()  ;
+    var paidDate = paymentData.paid_date.toString().trim()  ;
+    var status = paymentData.status.toString().trim()  ;
+    var paymentMethod = paymentData.payment_method.toString().trim()  ;
+    var recordedBy = paymentData.recorded_by.toString().trim()  ;
+    var note = paymentData.note.toString().trim()  ;
+
+     Hata kontrolünü groupsId değişkeni üzerinden yapıyoruz
+    if (!studentId  !groupsId  !dueDate) {
+      return responseError(student_id, groups_id (veya group_id) ve due_date zorunludur!);
+    }
+
+     Alt kısımda apiInsertDataInternal'a veriyi göndermeden önce nesneye groups_id'yi de set edelim
+    paymentData.groups_id = groupsId; 
+
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(payments);
+    if (!sheet) {
+      return responseError(payments sayfası bulunamadı!);
+    }
+
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+
+     Sütun indekslerini bul
+    var studentIdCol = headers.indexOf(student_id);
+    var groupsIdCol = headers.indexOf(groups_id); 
+    var dueDateCol = headers.indexOf(due_date);
+    var amountCol = headers.indexOf(amount);
+    var paidDateCol = headers.indexOf(paid_date);
+    var statusCol = headers.indexOf(status);
+    var paymentMethodCol = headers.indexOf(payment_method);
+    var recordedByCol = headers.indexOf(recorded_by);
+    var noteCol = headers.indexOf(note);
+    var idCol = headers.indexOf(payments_id);
+
+    if (studentIdCol === -1  groupsIdCol === -1  dueDateCol === -1) {
+      return responseError(Gerekli sütunlar bulunamadı!);
+    }
+
+    var existingRowIndex = -1;
+    var existingId = ;
+    var targetMonth = dueDate.substring(0, 7);  2026-06
+
+    for (var i = 1; i  values.length; i++) {
+      var sheetStudentId = values[i][studentIdCol].toString().trim()  ;
+      var sheetGroupsId = values[i][groupsIdCol].toString().trim()  ; 
+      var sheetDueDate = values[i][dueDateCol].toString().trim()  ;
+      var sheetMonth = sheetDueDate.substring(0, 7);
+
+      if (sheetStudentId === studentId &&
+          sheetGroupsId === groupsId &&
+          sheetMonth === targetMonth) {
+        existingRowIndex = i + 1; 
+        existingId = values[i][idCol].toString().trim()  ;
+        break;
+      }
+    }
+
+     📌 EĞER KAYIT VARSA → GÜNCELLE
+    if (existingRowIndex !== -1) {
+      Logger.log(🔄 Mevcut ödeme güncelleniyor...);
+
+      if (amountCol !== -1 && amount) sheet.getRange(existingRowIndex, amountCol + 1).setValue(amount);
+      if (paidDateCol !== -1 && paidDate) sheet.getRange(existingRowIndex, paidDateCol + 1).setValue(paidDate);
+      if (statusCol !== -1 && status) sheet.getRange(existingRowIndex, statusCol + 1).setValue(status);
+      if (paymentMethodCol !== -1 && paymentMethod) sheet.getRange(existingRowIndex, paymentMethodCol + 1).setValue(paymentMethod);
+      if (recordedByCol !== -1 && recordedBy) sheet.getRange(existingRowIndex, recordedByCol + 1).setValue(recordedBy);
+      if (noteCol !== -1 && note) sheet.getRange(existingRowIndex, noteCol + 1).setValue(note);
+
+      SpreadsheetApp.flush();
+
+      return responseSuccess({
+        message ✅ Ödeme güncellendi!,
+        id existingId,
+        student_id studentId,
+        groups_id groupsId,
+        due_date dueDate,
+        amount amount,
+        status status,
+        updated true
+      });
+    }
+
+     📌 EĞER KAYIT YOKSA → YENİ EKLE
+    Logger.log(➕ Yeni ödeme kaydı ekleniyor...);
+    var result = apiInsertDataInternal(payments, paymentData);
+
+    if (result.success) {
+      return responseSuccess({
+        message ✅ Ödeme kaydedildi!,
+        id result.id,
+        student_id studentId,
+        groups_id groupsId,
+        due_date dueDate,
+        amount amount,
+        status status,
+        updated false
+      });
+    } else {
+      return responseError(result.error);
+    }
+
+  } catch (error) {
+    Logger.log(❌ handleInsertPayment hatası  + error.toString());
+    return responseError(Ödeme hatası  + error.toString());
+  }
+}
+
+function handleInsertPayment(paymentData) {
+  try {
+    Logger.log(💰 Ödeme işleniyor  + JSON.stringify(paymentData));
+
+    var studentId = paymentData.student_id.toString().trim()  ;
+    var groupsId = paymentData.groups_id.toString().trim()  ;
+    var dueDate = paymentData.due_date.toString().trim()  ;
+    var amount = paymentData.amount.toString().trim()  ;
+    var paidDate = paymentData.paid_date.toString().trim()  ;
+    var status = paymentData.status.toString().trim()  ;
+    var paymentMethod = paymentData.payment_method.toString().trim()  ;
+    var recordedBy = paymentData.recorded_by.toString().trim()  ;
+    var note = paymentData.note.toString().trim()  ;
+
+    if (!studentId  !groupsId  !dueDate) {
+      return responseError(student_id, groups_id ve due_date zorunludur!);
+    }
+
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(payments);
+    if (!sheet) {
+      return responseError(payments sayfası bulunamadı!);
+    }
+
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+
+     Sütun indekslerini bul
+    var studentIdCol = headers.indexOf(student_id);
+    var groupsIdCol = headers.indexOf(groups_id);
+    var dueDateCol = headers.indexOf(due_date);
+    var amountCol = headers.indexOf(amount);
+    var paidDateCol = headers.indexOf(paid_date);
+    var statusCol = headers.indexOf(status);
+    var paymentMethodCol = headers.indexOf(payment_method);
+    var recordedByCol = headers.indexOf(recorded_by);
+    var noteCol = headers.indexOf(note);
+    var idCol = headers.indexOf(payments_id);
+
+    if (studentIdCol === -1  groupsIdCol === -1  dueDateCol === -1) {
+      return responseError(Gerekli sütunlar bulunamadı!);
+    }
+
+     🔥 AYNI ÖĞRENCİ + AYNI GRUP + AYNI AY (due_date) KAYDI VAR MI
+    var existingRowIndex = -1;
+    var existingId = ;
+
+     dueDate'in sadece YYYY-MM kısmını al (gün önemli değil, ay kontrolü)
+    var targetMonth = dueDate.substring(0, 7);  2026-06
+
+    for (var i = 1; i  values.length; i++) {
+      var sheetStudentId = values[i][studentIdCol].toString().trim()  ;
+      var sheetGroupsId = values[i][groupIdCol].toString().trim()  ;
+      var sheetDueDate = values[i][dueDateCol].toString().trim()  ;
+      
+       Sheet'teki tarihin sadece YYYY-MM kısmını al
+      var sheetMonth = sheetDueDate.substring(0, 7);
+
+      if (sheetStudentId === studentId && 
+          sheetGroupsId === groupsId && 
+          sheetMonth === targetMonth) {
+        existingRowIndex = i + 1;  1-indexed sheet row
+        existingId = values[i][idCol].toString().trim()  ;
+        Logger.log(🔍 Aynı ay kaydı bulundu! Satır  + existingRowIndex + , ID  + existingId);
+        break;
+      }
+    }
+
+     📌 EĞER KAYIT VARSA → GÜNCELLE
+    if (existingRowIndex !== -1) {
+      Logger.log(🔄 Mevcut ödeme güncelleniyor...);
+
+       Amount güncelle
+      if (amountCol !== -1 && amount) {
+        sheet.getRange(existingRowIndex, amountCol + 1).setValue(amount);
+      }
+
+       Paid Date güncelle
+      if (paidDateCol !== -1 && paidDate) {
+        sheet.getRange(existingRowIndex, paidDateCol + 1).setValue(paidDate);
+      }
+
+       Status güncelle
+      if (statusCol !== -1 && status) {
+        sheet.getRange(existingRowIndex, statusCol + 1).setValue(status);
+      }
+
+       Payment Method güncelle
+      if (paymentMethodCol !== -1 && paymentMethod) {
+        sheet.getRange(existingRowIndex, paymentMethodCol + 1).setValue(paymentMethod);
+      }
+
+       Recorded By güncelle
+      if (recordedByCol !== -1 && recordedBy) {
+        sheet.getRange(existingRowIndex, recordedByCol + 1).setValue(recordedBy);
+      }
+
+       Note güncelle
+      if (noteCol !== -1 && note) {
+        sheet.getRange(existingRowIndex, noteCol + 1).setValue(note);
+      }
+
+      SpreadsheetApp.flush();
+
+      return responseSuccess({
+        message ✅ Ödeme güncellendi!,
+        id existingId,
+        student_id studentId,
+        groups_id groupsId,
+        due_date dueDate,
+        amount amount,
+        status status,
+        updated true
+      });
+    }
+
+     📌 EĞER KAYIT YOKSA → YENİ EKLE
+    Logger.log(➕ Yeni ödeme kaydı ekleniyor...);
+    var result = apiInsertDataInternal(payments, paymentData);
+
+    if (result.success) {
+      return responseSuccess({
+        message ✅ Ödeme kaydedildi!,
+        id result.id,
+        student_id studentId,
+        groups_id groupsId,
+        due_date dueDate,
+        amount amount,
+        status status,
+        updated false
+      });
+    } else {
+      return responseError(result.error);
+    }
+
+  } catch (error) {
+    Logger.log(❌ handleInsertPayment hatası  + error.toString());
+    return responseError(Ödeme hatası  + error.toString());
+  }
+}
+
+function apiInsertDataInternal(sheetName, dataObject) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var targetSheet = ss.getSheetByName(sheetName);
+  if (!targetSheet) return { success false, error Sayfa bulunamadı  + sheetName };
+
+  var headers = DB_STRUCTURE[sheetName];
+  if (!headers  headers.length === 0) {
+    headers = targetSheet.getRange(1, 1, 1, targetSheet.getLastColumn()).getValues()[0];
+  }
+
+  Logger.log(📝  + sheetName +  için gelen veri  + JSON.stringify(dataObject));
+
+  var newRow = [];
+
+  for (var index = 0; index  headers.length; index++) {
+    var header = headers[index];
+    var val = dataObject[header];
+
+     Alternatif isimler
+    if (val === undefined  val === null) {
+      var alternatives = {
+        first_name [firstName, firstname, name, first],
+        last_name [lastName, lastname, surname, last],
+        profile_photo_url [profilePhotoUrl, photoUrl, imageUrl, profile_image],
+        password_hash [passwordHash, password, pass, pwd],
+        branches_id [branchesId, branchId, branch_id],
+        groups_id [groupsId, groupId, group_id],
+        notifications_id [notificationsId, notificationId],
+        student_id [studentId, studentid],
+        coach_id [coachId, coachid],
+        user_id [userId, userid],
+        created_at [createdAt, created],
+        enrolled_at [enrolledAt, enrolled],
+        hired_at [hiredAt, hired],
+        sent_at [sentAt, sent],
+        is_active [isActive, active],
+        is_read [isRead, read],
+        monthly_salary [monthlySalary, salary],
+        certificate_info [certificateInfo, certificate],
+        supervisor_coach_id [supervisorCoachId, supervisor]
+      };
+
+      if (alternatives[header]) {
+        for (var i = 0; i  alternatives[header].length; i++) {
+          var altKey = alternatives[header][i];
+          if (dataObject[altKey] !== undefined && dataObject[altKey] !== null) {
+            val = dataObject[altKey];
+            Logger.log(🔄  + header +  -  + altKey +  =  + val);
+            break;
+          }
+        }
+      }
+    }
+
+    if (index === 0) {
+      var idStr = (val === undefined  val === null)    val.toString().trim();
+      if (idStr !==  && idStr.indexOf(local_) !== 0 && ^d+$.test(idStr)) {
+        newRow.push(idStr);            gerçek sıralı ID - koru
+      } else {
+        newRow.push(getNextId(targetSheet));  boş  local_  UUID - yeni sıralı ID
+      }
+      continue;
+    }
+
+    if (val === undefined  val === null) {
+      newRow.push();
+      continue;
+    }
+
+    var strVal = val.toString().trim();
+
+     TARİH ALANLARI
+    if (header === attendance_date  header === b_date  header === due_date  header === paid_date) {
+      if (strVal === ) {
+        newRow.push();
+      } else {
+        var cleanDate = strVal;
+        if (cleanDate.indexOf('T') !== -1) cleanDate = cleanDate.split('T')[0];
+        if (cleanDate.indexOf(' ') !== -1) cleanDate = cleanDate.split(' ')[0];
+        newRow.push(cleanDate);
+      }
+      continue;
+    }
+
+     BİLDİRİM ÖZEL
+    if (sheetName === notifications && header === recipient_id) {
+      if (strVal ===   strVal === null) {
+        newRow.push(all);
+      } else if (strVal === Tümü  strVal === ALL) {
+        newRow.push(all);
+      } else {
+        newRow.push(strVal);
+      }
+      continue;
+    }
+
+    if (sheetName === notifications && header === groups_id) {
+      if (strVal ===   strVal === null) {
+        newRow.push();
+      } else {
+        newRow.push(strVal);
+      }
+      continue;
+    }
+
+     BOOLEAN ALANLAR
+    if (header === is_active  header === status  header === is_read) {
+      if (strVal ===   strVal === null) {
+        newRow.push(TRUE);
+      } else if (strVal === true  strVal === TRUE  strVal === 1  strVal === yes  strVal === YES) {
+        newRow.push(TRUE);
+      } else {
+        newRow.push(FALSE);
+      }
+      continue;
+    }
+
+     ZAMAN DAMGALARI
+    if ((header === created_at  header === sent_at  header === hired_at  header === enrolled_at) && strVal === ) {
+      newRow.push(new Date().toISOString().replace('T', ' ').substring(0, 19));
+      continue;
+    }
+
+     AMOUNT
+    if (header === amount && strVal === ) {
+      newRow.push(0);
+      continue;
+    }
+
+    newRow.push(strVal);
+  }
+
+  Logger.log(📝 Eklenecek satır  + JSON.stringify(newRow));
+
+  targetSheet.appendRow(newRow);
+  SpreadsheetApp.flush();
+
+  return { success true, id newRow[0] };
+}
+
+function getNextId(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow  2) return 1;
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var maxId = 0;
+
+  for (var i = 0; i  data.length; i++) {
+    var val = data[i][0];
+    if (val && val.toString().trim() !== ) {
+      var num = parseInt(val.toString().trim());
+      if (!isNaN(num) && num  maxId) {
+        maxId = num;
+      }
+    }
+  }
+
+  if (maxId === 0) return 1;
+  return maxId + 1;
+}
+
+ =========================================================================
+ 10. KISIM getUserRoles
+ =========================================================================
+
+function getUserRoles(userId) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var usersSheet = ss.getSheetByName(users);
+  var usersData = usersSheet.getDataRange().getValues();
+  var usersHeaders = usersData[0];
+
+  var role = ;
+  var isStudent = false;
+  var isCoach = false;
+  var isAssistant = false;
+  var groupIds = [];
+  var targetCoachIdForGroups = userId.toString();
+
+   1. Kullanıcı rolünü bul
+  for (var i = 1; i  usersData.length; i++) {
+    var rowUserId = getValue(usersData[i], usersHeaders, app);
+    rowUserId = rowUserId !== null && rowUserId !== undefined  rowUserId.toString()  ;
+    if (rowUserId === userId.toString()) {
+      var roleVal = getValue(usersData[i], usersHeaders, role);
+      role = roleVal !== null && roleVal !== undefined  roleVal.toString().toLowerCase()  ;
+      isStudent = (role === student  role === öğrenci);
+      isCoach = (role === coach  role === antrenör  role === assistant_coach  role === yardımcı_antrenör);
+      isAssistant = (role === assistant_coach  role === yardımcı_antrenör);
+      break;
+    }
+  }
+
+   2. Eğer Yardımcı Antrenör ise, üst antrenörün ID'sini bul (supervisor'dan)
+  if (isAssistant) {
+    var coachSheet = ss.getSheetByName(coaches);
+    if (coachSheet) {
+      var coachValues = coachSheet.getDataRange().getValues();
+      var coachHeaders = coachValues[0];
+      var userIdCol = coachHeaders.indexOf(user_id);
+      var supervisorCol = coachHeaders.indexOf(supervisor_coach_id);
+
+      for (var i = 1; i  coachValues.length; i++) {
+        var coachUserId = coachValues[i][userIdCol] != null  coachValues[i][userIdCol].toString().trim()  ;
+        if (coachUserId === userId.toString()) {
+          var supervisorIds = coachValues[i][supervisorCol] != null  coachValues[i][supervisorCol].toString().trim()  ;
+          if (supervisorIds) {
+            var masterIds = supervisorIds.split(,).map(function(id) { return id.trim(); }).filter(function(id) { return id !== ; });
+            if (masterIds.length  0) {
+              targetCoachIdForGroups = masterIds[0];
+              Logger.log(✅ Yardımcının üst koçları  + supervisorIds);
+            }
+          }
+          break;
+        }
+      }
+    }
+  }
+
+   3. GRUBA GÖRE YETKİLENDİRME
+  var groupsSheet = ss.getSheetByName(groups);
+  if (groupsSheet) {
+    var groupsData = groupsSheet.getDataRange().getValues();
+    var groupsHeaders = groupsData[0];
+
+    for (var i = 1; i  groupsData.length; i++) {
+      var coachId = getValue(groupsData[i], groupsHeaders, coach_id);
+      coachId = coachId !== null && coachId !== undefined  coachId.toString().trim()  ;
+
+      if (coachId === userId.toString()  (isAssistant && coachId === targetCoachIdForGroups)) {
+        var groupId = getValue(groupsData[i], groupsHeaders, groups_id);
+        groupId = groupId !== null && groupId !== undefined  groupId.toString().trim()  ;
+        if (groupId && groupIds.indexOf(groupId) === -1) {
+          groupIds.push(groupId);
+        }
+      }
+    }
+  }
+
+  return {
+    role role,
+    isStudent isStudent,
+    isCoach isCoach,
+    isAssistant isAssistant,
+    groupIds groupIds,
+    targetCoachIdForGroups targetCoachIdForGroups
+  };
+}
+
+ =========================================================================
+ 11. KISIM getNotificationsForUser
+ =========================================================================
+
+function getNotificationsForUser(userId) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(notifications);
+    if (!sheet) return [];
+
+    var values = sheet.getDataRange().getValues();
+    if (values.length  2) return [];
+
+    var headers = values[0];
+    var notifications = [];
+
+    var userInfo = getUserRoles(userId);
+    var isStudent = userInfo.isStudent;
+    var isCoach = userInfo.isCoach;
+    var isAssistant = userInfo.isAssistant;
+    var userGroups = userInfo.groupIds;
+    var masterCoachId = userInfo.targetCoachIdForGroups;
+
+    Logger.log(📨 Kullanıcı  + userId +  için bildirim filtreleniyor);
+    Logger.log(   Gruplar  + userGroups.join(, ));
+    Logger.log(   Asistan mı  + isAssistant + , Üst Koç  + masterCoachId);
+
+    for (var i = 1; i  values.length; i++) {
+      var row = values[i];
+      var recipientId = getValue(row, headers, recipient_id);
+      recipientId = recipientId !== null && recipientId !== undefined  recipientId.toString()  ;
+      var groupsId = getValue(row, headers, groups_id);
+      groupsId = groupsId !== null && groupsId !== undefined  groupsId.toString()  ;
+      var senderId = getValue(row, headers, sender_id);
+      senderId = senderId !== null && senderId !== undefined  senderId.toString()  ;
+
+      var shouldInclude = false;
+
+       1. HERKESE AÇIK DUYURU
+      if (recipientId === all  recipientId === Tümü  recipientId === ALL) {
+        shouldInclude = true;
+      }
+       2. KİŞİYE ÖZEL DUYURU
+      else if (recipientId === userId.toString()) {
+        shouldInclude = true;
+      }
+       3. GRUBA ÖZEL DUYURU
+      else if (groupsId && groupsId !==  && groupsId !== null) {
+        if (isStudent && userGroups.indexOf(groupsId) !== -1) {
+          shouldInclude = true;
+        }
+        else if (isCoach  isAssistant) {
+          var groupCoach = getGroupCoach(groupsId);
+          if (groupCoach === userId  groupCoach === masterCoachId) {
+            shouldInclude = true;
+            Logger.log(📨 Grup bildirimi eklendi  + groupsId +  (koç  + groupCoach + ));
+          }
+        }
+      }
+
+      if (shouldInclude) {
+        var notification = {};
+        for (var j = 0; j  headers.length; j++) {
+          notification[headers[j]] = row[j];
+        }
+        notifications.push(notification);
+      }
+    }
+
+    notifications.sort(function(a, b) {
+      var dateA = new Date(a.sent_at  0);
+      var dateB = new Date(b.sent_at  0);
+      return dateB - dateA;
+    });
+
+    Logger.log(📨 Kullanıcı  + userId +  için  + notifications.length +  bildirim bulundu.);
+    return notifications;
+
+  } catch (err) {
+    Logger.log(❌ getNotificationsForUser hatası  + err.toString());
+    return [];
+  }
+}
+
+ =========================================================================
+ 12. KISIM GRUP İŞLEMLERİ
+ =========================================================================
+
+function handleAssignStudentToGroup(studentId, groupId, isActive) {
+  Logger.log(🚀 handleAssignStudentToGroup çağrıldı - studentId  + studentId + , groupId  + groupId);
+
+  if (!studentId  !groupId) {
+    return responseError(student_id ve group_id gerekli.);
+  }
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(group_students);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var studentIdCol = headers.indexOf(student_id);
+  var groupIdCol = headers.indexOf(groups_id);
+  var enrolledAtCol = headers.indexOf(enrolled_at);
+
+  var now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    var sheetStudentId = values[i][studentIdCol].toString().trim();
+    if (sheetStudentId === studentId.toString().trim()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) {
+    var newRow = [];
+    for (var h = 0; h  headers.length; h++) {
+      var header = headers[h];
+      if (header === group_students_id) newRow.push(getNextId(sheet));
+      else if (header === student_id) newRow.push(studentId);
+      else if (header === groups_id) newRow.push(groupId);
+      else if (header === enrolled_at) newRow.push(now);
+      else if (header === is_active) newRow.push(TRUE);
+      else newRow.push();
+    }
+    sheet.appendRow(newRow);
+    return responseSuccess({ message ✅ Öğrenci gruba eklendi!, student_id studentId, group_id groupId });
+  }
+
+  sheet.getRange(rowIndex, groupIdCol + 1).setValue(groupId);
+  if (enrolledAtCol !== -1) {
+    sheet.getRange(rowIndex, enrolledAtCol + 1).setValue(now);
+  }
+
+  return responseSuccess({ message ✅ Öğrenci grubu güncellendi!, student_id studentId, group_id groupId });
+}
+
+function handleAssignCoachToGroup(groupId, coachId) {
+  if (!groupId  !coachId) {
+    return responseError(group_id ve coach_id gerekli.);
+  }
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(groups);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var coachIdColIndex = headers.indexOf(coach_id);
+  var groupIdColIndex = headers.indexOf(groups_id);
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][groupIdColIndex].toString() === groupId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) return responseError(Grup bulunamadı  + groupId);
+
+  sheet.getRange(rowIndex, coachIdColIndex + 1).setValue(coachId);
+
+  return responseSuccess({ message ✅ Antrenör gruba atandı!, group_id groupId, coach_id coachId });
+}
+
+function handleUpdateGroup(groupId, updateData) {
+  if (!groupId  !updateData) {
+    return responseError(group_id ve güncellenecek data gerekli.);
+  }
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(groups);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var groupIdColIndex = headers.indexOf(groups_id);
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][groupIdColIndex].toString() === groupId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) return responseError(Grup bulunamadı  + groupId);
+
+  headers.forEach(function(header, colIndex) {
+    if (updateData[header] !== undefined && header !== groups_id) {
+      sheet.getRange(rowIndex, colIndex + 1).setValue(updateData[header]);
+    }
+  });
+
+  return responseSuccess({ message ✅ Grup güncellendi., group_id groupId });
+}
+
+function handleUpdateGroupSchedule(groupId, newSchedule) {
+  if (!groupId) return responseError(group_id gerekli.);
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(groups);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var groupIdCol = headers.indexOf(groups_id);
+  var scheduleCol = headers.indexOf(schedule);
+
+  if (scheduleCol === -1) return responseError('schedule' sütunu bulunamadı!);
+
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][groupIdCol].toString() === groupId.toString()) {
+      sheet.getRange(i + 1, scheduleCol + 1).setValue(newSchedule);
+      return responseSuccess({ message Schedule güncellendi, group_id groupId, schedule newSchedule });
+    }
+  }
+
+  return responseError(Grup bulunamadı  + groupId);
+}
+
+function handleRemoveStudentFromGroup(studentId, groupId) {
+  if (!studentId  !groupId) {
+    return responseError(student_id ve group_id gerekli.);
+  }
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(group_students);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var studentIdCol = headers.indexOf(student_id);
+  var groupIdCol = headers.indexOf(groups_id);
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][studentIdCol].toString() === studentId.toString() &&
+        values[i][groupIdCol].toString() === groupId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) return responseError(Kayıt bulunamadı.);
+
+  sheet.getRange(rowIndex, groupIdCol + 1).setValue();
+
+  return responseSuccess({ message ✅ Öğrenci gruptan çıkarıldı. });
+}
+
+function handleTransferStudentToGroup(studentId, newGroupId) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(group_students);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var studentIdCol = headers.indexOf(student_id);
+  var groupIdCol = headers.indexOf(groups_id);
+  var enrolledAtCol = headers.indexOf(enrolled_at);
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][studentIdCol].toString() === studentId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) {
+    var newEnrollment = {
+      student_id studentId,
+      groups_id newGroupId,
+      enrolled_at new Date().toISOString().replace('T', ' ').substring(0, 19),
+    };
+    return apiInsertDataInternal(group_students, newEnrollment);
+  }
+
+  sheet.getRange(rowIndex, groupIdCol + 1).setValue(newGroupId);
+  sheet.getRange(rowIndex, enrolledAtCol + 1).setValue(new Date().toISOString().replace('T', ' ').substring(0, 19));
+
+  return responseSuccess({ message ✅ Öğrenci grubu değiştirildi! });
+}
+
+ =========================================================================
+ 13. KISIM KULLANICI İŞLEMLERİ
+ =========================================================================
+
+function handleUpdateUser(data) {
+  var userId = data.id  data.app  data.email;
+  if (!userId) return responseError(Güncelleme için kullanıcı ID gerekli.);
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(users);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var rowIndex = -1;
+  for (var j = 1; j  values.length; j++) {
+    var cellId = (values[j][0]  ).toString();
+    var cellEmail = (values[j][headers.indexOf(email)]  ).toString();
+    if (cellId === userId.toString()  cellEmail === userId.toString()) {
+      rowIndex = j + 1;
+      break;
+    }
+  }
+  if (rowIndex === -1) return responseError(Kullanıcı bulunamadı.);
+
+  headers.forEach(function(header, colIndex) {
+    if (data[header] !== undefined && header !== headers[0]) {
+      var valToSet = data[header];
+      if (header === is_active) {
+        valToSet = (valToSet == 1  valToSet == 1  valToSet === true  valToSet === true)  TRUE  FALSE;
+      }
+      sheet.getRange(rowIndex, colIndex + 1).setValue(valToSet);
+    }
+  });
+
+  return responseSuccess({ message ✅ Kullanıcı güncellendi. });
+}
+
+function handleDeactivateUser(userId) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(users);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var appColIndex = headers.indexOf(app);
+  var isActiveColIndex = headers.indexOf(is_active);
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][appColIndex].toString() === userId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) return responseError(Kullanıcı bulunamadı.);
+
+  sheet.getRange(rowIndex, isActiveColIndex + 1).setValue(FALSE);
+
+  return responseSuccess({ message ✅ Kullanıcı devre dışı bırakıldı. });
+}
+
+function handleUpdateLastLogin(userId, lastLogin) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(users);
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+
+    var appColIndex = headers.indexOf(app);
+    var lastLoginColIndex = headers.indexOf(last_login);
+
+    var rowIndex = -1;
+    for (var i = 1; i  values.length; i++) {
+      if (values[i][appColIndex].toString() === userId.toString()) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (rowIndex === -1) return responseError(Kullanıcı bulunamadı  + userId);
+
+    sheet.getRange(rowIndex, lastLoginColIndex + 1).setValue(lastLogin);
+
+    return responseSuccess({
+      message ✅ Son giriş tarihi güncellendi,
+      user_id userId,
+      last_login lastLogin
+    });
+
+  } catch (error) {
+    return responseError(Güncelleme hatası  + error.toString());
+  }
+}
+
+function handleUpdatePassword(userId, hashedPassword) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(users);
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+
+  var appColIndex = headers.indexOf(app);
+  var passColIndex = headers.indexOf(password_hash);
+
+  var rowIndex = -1;
+  for (var i = 1; i  data.length; i++) {
+    if (data[i][appColIndex].toString() === userId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) return responseError(Kullanıcı bulunamadı);
+
+  sheet.getRange(rowIndex, passColIndex + 1).setValue(hashedPassword);
+
+  return responseSuccess({ message Şifre güncellendi });
+}
+
+function handleUpdateUserAmount(userId, newAmount) {
+  try {
+    Logger.log(💰 handleUpdateUserAmount çağrıldı - UserId  + userId + , Amount  + newAmount);
+
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(users);
+    if (!sheet) return responseError(Users sayfası bulunamadı.);
+
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+
+    var appColIndex = headers.indexOf(app);
+    var amountColIndex = headers.indexOf(amount);
+
+    if (appColIndex === -1) return responseError('app' sütunu bulunamadı!);
+    if (amountColIndex === -1) return responseError('amount' sütunu bulunamadı!);
+
+    var rowIndex = -1;
+    for (var i = 1; i  values.length; i++) {
+      var cellValue = values[i][appColIndex]  values[i][appColIndex].toString()  ;
+      if (cellValue === userId.toString()) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (rowIndex === -1) {
+      Logger.log(❌ Kullanıcı bulunamadı  + userId);
+      return responseError(Kullanıcı bulunamadı  + userId);
+    }
+
+    sheet.getRange(rowIndex, amountColIndex + 1).setValue(newAmount.toString());
+    Logger.log(✅ Kullanıcı ücreti güncellendi  + userId +  -  + newAmount);
+
+    return responseSuccess({
+      message Ücret güncellendi,
+      user_id userId,
+      new_amount newAmount
+    });
+
+  } catch (error) {
+    Logger.log(❌ handleUpdateUserAmount hatası  + error.toString());
+    return responseError(Güncelleme hatası  + error.toString());
+  }
+}
+
+ =========================================================================
+ 14. KISIM YOKLAMA KAYDETME
+ =========================================================================
+
+function handleSaveAttendance(attendanceData) {
+  try {
+    Logger.log(📝 Yoklama kaydediliyor  + JSON.stringify(attendanceData));
+    
+    var studentId = attendanceData.student_id.toString().trim()  ;
+    var attendanceDate = attendanceData.attendance_date.toString().trim()  ;
+    var groupsId = attendanceData.groups_id.toString().trim()  ;
+    var status = attendanceData.status.toString().trim()  ;
+    var takenBy = attendanceData.taken_by.toString().trim()  ;
+    var note = attendanceData.note.toString().trim()  ;
+    
+    if (!studentId  !attendanceDate  !groupsId) {
+      return responseError(student_id, attendance_date ve groups_id zorunludur!);
+    }
+    
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(attendances);
+    if (!sheet) {
+      return responseError(attendances sayfası bulunamadı!);
+    }
+    
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+    
+     Sütun indekslerini bul
+    var studentIdCol = headers.indexOf(student_id);
+    var attendanceDateCol = headers.indexOf(attendance_date);
+    var groupsIdCol = headers.indexOf(groups_id);
+    var statusCol = headers.indexOf(status);
+    var takenByCol = headers.indexOf(taken_by);
+    var noteCol = headers.indexOf(note);
+    var idCol = headers.indexOf(attendances_id);
+    
+    if (studentIdCol === -1  attendanceDateCol === -1  groupsIdCol === -1) {
+      return responseError(Gerekli sütunlar bulunamadı!);
+    }
+    
+     🔥 AYNI GÜN VE AYNI ÖĞRENCİ İÇİN KAYIT VAR MI KONTROL ET
+    var existingRowIndex = -1;
+    var existingId = ;
+    
+    for (var i = 1; i  values.length; i++) {
+      var sheetStudentId = values[i][studentIdCol].toString().trim()  ;
+      var sheetAttendanceDate = values[i][attendanceDateCol].toString().trim()  ;
+      var sheetGroupsId = values[i][groupsIdCol].toString().trim()  ;
+      
+       Tarihleri karşılaştır (sadece YYYY-MM-DD formatında karşılaştır)
+      var date1 = attendanceDate.split(' ')[0];  2026-06-20 al
+      var date2 = sheetAttendanceDate.split(' ')[0];
+      
+      if (sheetStudentId === studentId && 
+          sheetGroupsId === groupsId && 
+          date1 === date2) {
+        existingRowIndex = i + 1;  1-indexed sheet row
+        existingId = values[i][idCol].toString().trim()  ;
+        Logger.log(🔍 Aynı gün kaydı bulundu! Satır  + existingRowIndex + , ID  + existingId);
+        break;
+      }
+    }
+    
+     📌 EĞER KAYIT VARSA → GÜNCELLE
+    if (existingRowIndex !== -1) {
+      Logger.log(🔄 Mevcut kayıt güncelleniyor...);
+      
+       Status'ü güncelle
+      if (statusCol !== -1 && status) {
+        sheet.getRange(existingRowIndex, statusCol + 1).setValue(status);
+      }
+      
+       Taken By güncelle
+      if (takenByCol !== -1 && takenBy) {
+        sheet.getRange(existingRowIndex, takenByCol + 1).setValue(takenBy);
+      }
+      
+       Note güncelle
+      if (noteCol !== -1 && note) {
+        sheet.getRange(existingRowIndex, noteCol + 1).setValue(note);
+      }
+      
+      SpreadsheetApp.flush();
+      
+      return responseSuccess({ 
+        message ✅ Yoklama güncellendi!, 
+        id existingId,
+        student_id studentId,
+        attendance_date attendanceDate,
+        status status,
+        updated true
+      });
+    }
+    
+     📌 EĞER KAYIT YOKSA → YENİ EKLE
+    Logger.log(➕ Yeni yoklama kaydı ekleniyor...);
+    var result = apiInsertDataInternal(attendances, attendanceData);
+    
+    if (result.success) {
+      return responseSuccess({ 
+        message ✅ Yoklama kaydedildi!, 
+        id result.id,
+        student_id studentId,
+        attendance_date attendanceDate,
+        status status,
+        updated false
+      });
+    } else {
+      return responseError(result.error);
+    }
+    
+  } catch (error) {
+    Logger.log(❌ handleSaveAttendance hatası  + error.toString());
+    return responseError(Yoklama hatası  + error.toString());
+  }
+}
+
+ =========================================================================
+ 14. KISIM YOKLAMA KAYDETME (DÜZELTİLMİŞ)
+ =========================================================================
+ =========================================================================
+ 14. KISIM YOKLAMA KAYDETME (Kesin Çözüm)
+ =========================================================================
+ =========================================================================
+ 14. KISIM YOKLAMA KAYDETME (Kesin Çözüm)
+ =========================================================================
+ =========================================================================
+ 14. KISIM YOKLAMA KAYDETME (Kesin Çözüm - ID KONTROLLÜ)
+ =========================================================================
+ =========================================================================
+ 7. KISIM YOKLAMA KAYDETME (DÜZELTİLMİŞ)
+ =========================================================================
+ =========================================================================
+ 7. KISIM YOKLAMA KAYDETME (DÜZELTİLMİŞ - ID KONTROLLÜ)
+ =========================================================================
+ =========================================================================
+ 14. KISIM YOKLAMA KAYDETME (KESİN ÇÖZÜM - ID KONTROLLÜ)
+ =========================================================================
+
+ 3) TEK YOKLAMA — aynı öğrenci+grup+GÜN varsa GÜNCELLE (Date-güvenli).
+function handleSaveAttendance(attendanceData) {
+  try {
+    var studentId  = (attendanceData.student_id  ).toString().trim();
+    var attDateRaw = (attendanceData.attendance_date  ).toString().trim();
+    var groupsId   = (attendanceData.groups_id  ).toString().trim();
+    var status     = (attendanceData.status  ).toString().trim();
+    var takenBy    = (attendanceData.taken_by  ).toString().trim();
+    var note       = (attendanceData.note  ).toString();
+ 
+    if (!studentId  !attDateRaw  !groupsId) {
+      return responseError(student_id, attendance_date ve groups_id zorunludur!);
+    }
+ 
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(attendances);
+    if (!sheet) return responseError(attendances sayfası bulunamadı!);
+ 
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+ 
+    var idCol       = headers.indexOf(attendances_id);
+    var studentCol  = headers.indexOf(student_id);
+    var dateCol     = headers.indexOf(attendance_date);
+    var groupCol    = headers.indexOf(groups_id);
+    var statusCol   = headers.indexOf(status);
+    var takenByCol  = headers.indexOf(taken_by);
+    var noteCol     = headers.indexOf(note);
+    var updatedCol  = headers.indexOf(updated_at);
+ 
+    if (studentCol === -1  dateCol === -1  groupCol === -1) {
+      return responseError(Gerekli sütunlar bulunamadı!);
+    }
+ 
+    var targetDay = _attDay(attDateRaw);    🔥 Date-güvenli
+ 
+     Aynı öğrenci + grup + GÜN kaydı var mı
+    var existingRow = -1;
+    for (var i = 1; i  values.length; i++) {
+      var sId = (values[i][studentCol]  ).toString().trim();
+      var gId = (values[i][groupCol]    ).toString().trim();
+      var dY  = _attDay(values[i][dateCol]);   🔥
+      if (sId === studentId && gId === groupsId && dY === targetDay) {
+        existingRow = i + 1;
+        break;
+      }
+    }
+ 
+     🔁 VARSA GÜNCELLE
+    if (existingRow !== -1) {
+      if (statusCol  !== -1) sheet.getRange(existingRow, statusCol  + 1).setValue(status);
+      if (takenByCol !== -1 && takenBy) sheet.getRange(existingRow, takenByCol + 1).setValue(takenBy);
+      if (noteCol    !== -1) sheet.getRange(existingRow, noteCol + 1).setValue(note);
+      if (updatedCol !== -1) sheet.getRange(existingRow, updatedCol + 1).setValue(new Date().toISOString());
+      SpreadsheetApp.flush();
+      return responseSuccess({
+        message ✅ Yoklama güncellendi!,
+        id (values[existingRow - 1][idCol]  ).toString(),
+        updated true
+      });
+    }
+ 
+     ➕ YOKSA YENİ EKLE — SIRALI numeric ID
+    var newId = getNextId(sheet);
+    var rec = {
+      attendances_id newId,
+      groups_id groupsId, student_id studentId,
+      taken_by takenBy, attendance_date attDateRaw,
+      status status, note note, updated_at new Date().toISOString()
+    };
+    var newRow = [];
+    for (var h = 0; h  headers.length; h++) {
+      newRow.push(rec[headers[h]] !== undefined  rec[headers[h]]  );
+    }
+    sheet.appendRow(newRow);
+    SpreadsheetApp.flush();
+ 
+    return responseSuccess({ message ✅ Yoklama kaydedildi!, id newId, updated false });
+ 
+  } catch (error) {
+    Logger.log(❌ handleSaveAttendance  + error.toString());
+    return responseError(Yoklama hatası  + error.toString());
+  }
+}
+ =========================================================================
+ 15. KISIM ÖDEME İŞLEMLERİ
+ =========================================================================
+
+function handleDeletePayment(paymentsId) {
+  if (!paymentsId) {
+    return responseError(payments_id gerekli.);
+  }
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(payments);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var idCol = headers.indexOf(payments_id);
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][idCol].toString() === paymentsId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) return responseError(Ödeme bulunamadı  + paymentsId);
+
+  sheet.deleteRow(rowIndex);
+
+  return responseSuccess({ message ✅ Ödeme silindi!, payments_id paymentsId });
+}
+
+function handleUpdatePayment(paymentsId, updateData) {
+  if (!paymentsId  !updateData) {
+    return responseError(payments_id ve güncellenecek data gerekli.);
+  }
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(payments);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var idCol = headers.indexOf(payments_id);
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][idCol].toString() === paymentsId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) return responseError(Ödeme bulunamadı  + paymentsId);
+
+  headers.forEach(function(header, colIndex) {
+    if (updateData[header] !== undefined && header !== payments_id) {
+      sheet.getRange(rowIndex, colIndex + 1).setValue(updateData[header]);
+    }
+  });
+
+  return responseSuccess({ message ✅ Ödeme güncellendi!, payments_id paymentsId });
+}
+
+function handleCheckMonthlyFees() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(groups);
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+
+    var monthlyFeeCol = headers.indexOf(monthly_fee);
+    var nameCol = headers.indexOf(groups_name);
+    var idCol = headers.indexOf(groups_id);
+
+    if (monthlyFeeCol === -1) {
+      return responseError('monthly_fee' sütunu bulunamadı!);
+    }
+
+    var groups = [];
+    for (var i = 1; i  data.length; i++) {
+      var monthlyFee = data[i][monthlyFeeCol];
+      var feeValue = 0;
+
+      if (monthlyFee !== undefined && monthlyFee !== null && monthlyFee !== ) {
+        feeValue = parseFloat(monthlyFee);
+        if (isNaN(feeValue)) feeValue = 0;
+      }
+
+      groups.push({
+        groups_id data[i][idCol] != null  data[i][idCol].toString()  ,
+        groups_name data[i][nameCol] != null  data[i][nameCol].toString()  ,
+        monthly_fee feeValue.toString()
+      });
+    }
+
+    return responseSuccess({ groups groups });
+
+  } catch (err) {
+    return responseError(Hata  + err.toString());
+  }
+}
+
+ =========================================================================
+ 16. KISIM BİLDİRİM İŞLEMLERİ
+ =========================================================================
+
+function handleUpdateNotification(notificationsId, isRead) {
+  if (!notificationsId) {
+    return responseError(notifications_id gerekli.);
+  }
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(notifications);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var notifIdColIndex = headers.indexOf(notifications_id);
+  var isReadColIndex = headers.indexOf(is_read);
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][notifIdColIndex].toString() === notificationsId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) return responseError(Bildirim bulunamadı  + notificationsId);
+
+  var newValue = (isRead === true  isRead === TRUE)  TRUE  FALSE;
+  sheet.getRange(rowIndex, isReadColIndex + 1).setValue(newValue);
+
+  return responseSuccess({
+    message ✅ Bildirim okundu olarak işaretlendi!,
+    notifications_id notificationsId,
+    is_read newValue
+  });
+}
+
+function handleUploadImage(fileName, base64Data, folderName, targetUserId, targetField) {
+  try {
+    Logger.log(📸 Yükleniyor  + fileName);
+    
+    const FOLDER_ID = 1FwSXiBXWlkDSA58QNLOelODMlSk7DYTG;
+    const folder = DriveApp.getFolderById(FOLDER_ID);
+
+     1️⃣ ESKİYİ SİL
+    const existingFiles = folder.getFilesByName(fileName);
+    while (existingFiles.hasNext()) {
+      const oldFile = existingFiles.next();
+      Logger.log(🗑️ Siliniyor  + oldFile.getName());
+      oldFile.setTrashed(true);
+    }
+
+     2️⃣ MIME TYPE
+    let mimeType = 'imagejpeg';
+    const extension = fileName.split('.').pop().toLowerCase();
+    if (extension === 'png') mimeType = 'imagepng';
+    else if (extension === 'gif') mimeType = 'imagegif';
+
+     3️⃣ BASE64'DEN BLOB OLUŞTUR
+    if (base64Data.indexOf(',') !== -1) {
+      base64Data = base64Data.split(',')[1];
+    }
+    const decodedData = Utilities.base64Decode(base64Data);
+    const blob = Utilities.newBlob(decodedData, mimeType, fileName);
+    
+     4️⃣ DOSYAYI OLUŞTUR
+    const file = folder.createFile(blob);
+    
+     🔥 PAYLAŞIM İZNİ VER
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+     try {
+      Drive.Permissions.create({
+        role reader,
+        type anyone,
+        fileId file.getId()
+      });
+      Logger.log(✅ Paylaşım izni verildi (Drive API));
+    } catch (e) {
+      Logger.log(⚠️ Drive API ile paylaşım başarısız, setSharing deneniyor  + e);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }
+     🔥🔥🔥 BURASI ÖNEMLİ! DOĞRUDAN GÖRÜNTÜLENEBİLİR URL
+     file.getUrl() yerine doğrudan resim URL'si oluştur
+    const fileId = file.getId();
+    const fileUrl = httpsdrive.google.comucexport=view&id= + fileId;
+    
+    Logger.log(✅ Yüklendi. URL  + fileUrl);
+    Logger.log(📁 Dosya ID  + fileId);
+
+    return responseSuccess({ fileName fileName, fileId fileUrl });
+
+  } catch (error) {
+    Logger.log(❌ Hata  + error.toString());
+    return responseError(Yükleme hatası  + error.toString());
+  }
+}
+
+function handleUploadImage(fileName, base64Data, folderName, targetUserId, targetField) {
+  try {
+    Logger.log(📸 Yükleniyor  + fileName);
+    
+    const FOLDER_ID = 1FwSXiBXWlkDSA58QNLOelODMlSk7DYTG;
+    const folder = DriveApp.getFolderById(FOLDER_ID);
+
+     1️⃣ DOSYA ADINDAN EMAIL'İ AYIKLA
+     fileName = deneme1@gmail.com.jpg → emailFromFileName = deneme1@gmail.com
+    var emailFromFileName = fileName;
+    var lastDotIndex = emailFromFileName.lastIndexOf('.');
+    if (lastDotIndex  0) {
+      emailFromFileName = emailFromFileName.substring(0, lastDotIndex);
+    }
+    Logger.log(📧 Dosya adından çıkarılan email  + emailFromFileName);
+
+     2️⃣ GOOGLE SHEETS ÜZERİNDEN KULLANICIYI VE ESKİ FOTOĞRAF URL'İNİ BUL
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(users);
+    if (!sheet) {
+      Logger.log(❌ users sayfası bulunamadı!);
+      return responseError(users sayfası bulunamadı!);
+    }
+    
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+    
+    var emailCol = headers.indexOf(email);
+    var photoCol = headers.indexOf(profile_photo_url);
+    
+    if (emailCol === -1  photoCol === -1) {
+      Logger.log(❌ 'email' veya 'profile_photo_url' sütunları eksik!);
+      return responseError(Gerekli sütunlar bulunamadı!);
+    }
+
+    var foundRowIndex = -1;
+    var oldPhotoUrl = ;
+
+    for (var i = 1; i  values.length; i++) {
+      var sheetEmail = values[i][emailCol].toString().trim()  ;
+      if (sheetEmail === emailFromFileName) {
+        foundRowIndex = i + 1;  1-indexed sheet row index
+        oldPhotoUrl = values[i][photoCol].toString().trim()  ;
+        break;
+      }
+    }
+
+     3️⃣ 🔥 EĞER ESKİ URL VARSA, DRIVE'DAN ESKİ DOSYAYI BUL VE SİL 🔥
+    if (foundRowIndex !== -1 && oldPhotoUrl !== ) {
+      Logger.log(🔄 Kullanıcının eski bir fotoğrafı bulundu, temizlik başlıyor  + oldPhotoUrl);
+      try {
+         Drive URL'lerinden ID'yi ayıkla (ucexport=view&id=... veya d...)
+        var oldFileId = ;
+        if (oldPhotoUrl.indexOf(id=) !== -1) {
+          oldFileId = oldPhotoUrl.split(id=)[1].split(&)[0];
+        } else if (oldPhotoUrl.indexOf(d) !== -1) {
+          oldFileId = oldPhotoUrl.split(d)[1].split()[0];
+        }
+
+        if (oldFileId !== ) {
+          var fileToTrash = DriveApp.getFileById(oldFileId);
+          fileToTrash.setTrashed(true);  Çöp kutusuna at
+          Logger.log(🗑️ Eski dosya başarıyla çöp kutusuna taşındı. ID  + oldFileId);
+        }
+      } catch (err) {
+         Eski dosya zaten silinmişse veya ulaşılamıyorsa kodun çökmemesi için catch bloğunda logla geç
+        Logger.log(⚠️ Eski dosya silinirken hata oluştu (Muhtemelen dosya zaten yok)  + err.toString());
+      }
+    }
+
+     4️⃣ BASE64'DEN BLOB OLUŞTUR VE YENİ DOSYAYI YÜKLE
+    let mimeType = 'imagejpeg';
+    const extension = fileName.split('.').pop().toLowerCase();
+    if (extension === 'png') mimeType = 'imagepng';
+    else if (extension === 'gif') mimeType = 'imagegif';
+
+    if (base64Data.indexOf(',') !== -1) {
+      base64Data = base64Data.split(',')[1];
+    }
+    const decodedData = Utilities.base64Decode(base64Data);
+    const blob = Utilities.newBlob(decodedData, mimeType, fileName);
+    
+     Klasöre yeni dosyayı ekle
+    const file = folder.createFile(blob);
+    const fileId = file.getId();
+    const fileUrl = httpsdrive.google.comucexport=view&id= + fileId;
+    
+    Logger.log(✅ Yeni dosya oluşturuldu. URL  + fileUrl);
+
+     5️⃣ GOOGLE SHEETS'İ YENİ URL İLE GÜNCELLE
+    var isSheetUpdated = false;
+    if (foundRowIndex !== -1) {
+      sheet.getRange(foundRowIndex, photoCol + 1).setValue(fileUrl);
+      SpreadsheetApp.flush();
+      Logger.log(✅✅✅ Sheets üzerinde kullanıcı satırı güncellendi! Satır  + foundRowIndex);
+      isSheetUpdated = true;
+    } else {
+      Logger.log(⚠️ Veritabanında ' + emailFromFileName + ' adresine sahip bir kullanıcı bulunamadığı için sadece Drive'a yüklendi.);
+    }
+
+    return responseSuccess({ 
+      fileName fileName, 
+      fileId fileUrl,
+      email emailFromFileName,
+      updated isSheetUpdated
+    });
+
+  } catch (error) {
+    Logger.log(❌ handleUploadImage Hatası  + error.toString());
+    return responseError(Yükleme hatası  + error.toString());
+  }
+}
+function handleGetImageUrl(fileName, folderName, size = w1000) {
+  try {
+    var parentFolderId = 1FwSXiBXWlkDSA58QNLOelODMlSk7DYTG;
+    var parentFolder = DriveApp.getFolderById(parentFolderId);
+    
+    var folders = parentFolder.getFoldersByName(folderName);
+    if (!folders.hasNext()) {
+      return responseError(Klasör bulunamadı  + folderName);
+    }
+    
+    var files = folders.next().getFilesByName(fileName);
+    if (!files.hasNext()) {
+      return responseError(Dosya bulunamadı  + fileName);
+    }
+    
+    var file = files.next();
+    
+    var url;
+    if (size == thumbnail) {
+      url = httpsdrive.google.comthumbnailid= + file.getId() + &sz=w200;
+    } else if (size == medium) {
+      url = httpsdrive.google.comthumbnailid= + file.getId() + &sz=w800;
+    } else if (size == original) {
+      url = httpsdrive.google.comucexport=view&id= + file.getId();
+    } else {
+      url = httpsdrive.google.comthumbnailid= + file.getId() + &sz= + size;
+    }
+    
+    return responseSuccess({ url url });
+  } catch (error) {
+    return responseError(Resim URL alma hatası  + error.toString());
+  }
+}
+
+
+ =========================================================================
+ 17. KISIM FOTOĞRAF İŞLEMLERİ
+ =========================================================================
+function handleUploadImage(fileName, base64Data, folderName, targetUserId, targetField) {
+  try {
+    Logger.log(📸 Yükleniyor  + fileName);
+    
+     🔥 BURAYA DRIVE KLASÖR ID'sini YAZ
+    const FOLDER_ID = 1FwSXiBXWlkDSA58QNLOelODMlSk7DYTG;  🔥 YENİ KLASÖR
+    const folder = DriveApp.getFolderById(FOLDER_ID);
+
+     1️⃣ ESKİYİ SİL
+    const existingFiles = folder.getFilesByName(fileName);
+    while (existingFiles.hasNext()) {
+      const oldFile = existingFiles.next();
+      Logger.log(🗑️ Siliniyor  + oldFile.getName());
+      oldFile.setTrashed(true);
+    }
+
+     2️⃣ MIME TYPE BELİRLEME
+    let mimeType = 'imagejpeg';
+    const extension = fileName.split('.').pop().toLowerCase();
+    if (extension === 'png') mimeType = 'imagepng';
+    else if (extension === 'gif') mimeType = 'imagegif';
+
+     3️⃣ BASE64 TEMİZLİĞİ VE BLOB OLUŞTURMA
+    if (base64Data.indexOf(',') !== -1) {
+      base64Data = base64Data.split(',')[1];
+    }
+    const decodedData = Utilities.base64Decode(base64Data);
+    const blob = Utilities.newBlob(decodedData, mimeType, fileName);
+
+     4️⃣ YENİ DOSYAYI OLUŞTUR
+    const file = folder.createFile(blob);
+    
+     🔥 PAYLAŞIM İZNİ VER (Herkes görebilir)
+    try {
+      Drive.Permissions.create({
+        role reader,
+        type anyone,
+        fileId file.getId()
+      });
+      Logger.log(✅ Paylaşım izni verildi (Drive API));
+    } catch (e) {
+      Logger.log(⚠️ Drive API ile paylaşım başarısız, setSharing deneniyor  + e);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }
+
+     🔥 URL'Yİ DÖNDÜR
+    const fileUrl = file.getUrl();
+    Logger.log(✅ Yüklendi ve Paylaşıma Açıldı. URL  + fileUrl);
+
+    return responseSuccess({ fileName fileName, fileId fileUrl });
+
+  } catch (error) {
+    Logger.log(❌ Hata  + error.toString());
+    return responseError(Yükleme hatası  + error.toString());
+  }
+}
+function handleGetImageUrl(fileName, folderName, size) {
+  try {
+    if (!size) size = w1000;
+    var parentFolderId = 1j8OGslMo8arnBIAOBcClka1rS6GPTDif;  ESKİ KLASÖR
+    var parentFolder = DriveApp.getFolderById(parentFolderId);
+    
+    var folders = parentFolder.getFoldersByName(folderName);
+    if (!folders.hasNext()) {
+      return responseError(Klasör bulunamadı  + folderName);
+    }
+    
+    var files = folders.next().getFilesByName(fileName);
+    if (!files.hasNext()) {
+      return responseError(Dosya bulunamadı  + fileName);
+    }
+    
+    var file = files.next();
+    
+    var url;
+    if (size == thumbnail) {
+      url = httpsdrive.google.comthumbnailid= + file.getId() + &sz=w200;
+    } else if (size == medium) {
+      url = httpsdrive.google.comthumbnailid= + file.getId() + &sz=w800;
+    } else if (size == original) {
+      url = httpsdrive.google.comucexport=view&id= + file.getId();
+    } else {
+      url = httpsdrive.google.comthumbnailid= + file.getId() + &sz= + size;
+    }
+    
+    return responseSuccess({ url url });
+  } catch (error) {
+    return responseError(Resim URL alma hatası  + error.toString());
+  }
+}
+
+ =========================================================================
+ 18. KISIM FCM TOKEN İŞLEMLERİ
+ =========================================================================
+
+function handleUpdateFcmToken(userId, fcmToken) {
+  if (!userId  !fcmToken) {
+    return responseError(user_id ve fcm_token gerekli.);
+  }
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(users);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var appColIndex = headers.indexOf(app);
+  var tokenColIndex = headers.indexOf(fcm_token);
+
+  if (tokenColIndex === -1) {
+    return responseError(fcm_token sütunu bulunamadı! Lütfen 'Sistemi Kur' menüsünü çalıştırın.);
+  }
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if (values[i][appColIndex].toString() === userId.toString()) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) {
+    return responseError(Kullanıcı bulunamadı  + userId);
+  }
+
+  sheet.getRange(rowIndex, tokenColIndex + 1).setValue(fcmToken);
+
+  return responseSuccess({ message FCM Token güncellendi, user_id userId });
+}
+
+ =========================================================================
+ 19. KISIM FCM BİLDİRİM GÖNDERME
+ =========================================================================
+
+var FCM_PROJECT_ID = evomspor;
+
+var SERVICE_ACCOUNT = {
+  type service_account,
+  project_id evomspor,
+  private_key_id 00892e8d6191990affaaf7b0cfdbb34e5d8819bc,
+  private_key -----BEGIN PRIVATE KEY-----nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC0DFSIKZBIG6nf88yI2iBSpmbOEouaA3jsaDUwQEEeKWJhCMA9UihlspE9pcUbyoalnMU47ixxiCDnS7ykzDBLj1v2u7LUUbBClwi1q+MN1hU10H+k6Tijdq1AN2Hqs8Tp4q+r5cnBzkGnylMkpmZ8G3ACiJ9XMFKZbh8LjDl93RbRSqYG2wChyoRHy343VaVNpay1dmYsLnZJF6IQFArn+7YGVLyAXWRQCmbMchDBfaLrPNbY5pj5KJCa08qI+o7meJrBdlXwn8WMhWt0xAjzA4iVc08M2PPREpFkibgxd7SZ+6+mafhQEjofxRzFPAj8NXcj6tBlanMkyvrnoLAgMBAAECggEADlva9Vx43AoCthoCFrNzkAsaqevHvpra66qi2aanY+yn1nOw0UEkl4lel9UWjGz7YqugCr68ZwJIjxIhr9NxW3VOvwcKO5UVjlrsOnmeJHlinAiFn33o4QS8u9GBSsxJGppEKzXEh5VtJ13OS4BwBkpX2YR+MtR1c2EZn2SMxZnXnekpWv2AqSNoFo85IoZ7DFP1BaRDzOlJSBkdY9ifuSYRxfjbJpJWY9JdC7wW46l5zndkSHjSElBdnWw6sK7SmZwrTVe+xzswZYQoRfVcScU1vVJSs4Jo7FeR3mc5vVbX88nHdERyhMZHWBVGee5F1ezI7SN+xsqtZVSMYw2grHrMQKBgQDwCFDh+2wOH95IUlj6nkTKwceom+g1QmJp0r7x68QsnzOayu92V7V9SXYNecRu0zHwgCfciIESxQh+8tFIwntHh4V41H3lzgYusFXzgAVkuTsfOWtsYQ2HiagiZhWwga6SfJm13QSJyKGg0BIS1knceoZmpqsvIFKA5Jm2tME7NoWwKBgQDBBmCf3xVZpnqThLq1GJXSt+c5CCSck+GzniZmAo0iwGNTGGO1jJ8uDx9kA3Cy7t5SQzZQrLPU8BkAMoFhozkIRoUGM1DMPjG9nx8c6dmCYTJuPdwZ5gpAV7PYf0vj58UJwf0uIxRk6sw7y0v4gUY9v0PnqN8sNEjTknS5IlK9NkEQKBgATLVbo9yFm73ze4lVhj4AxQKiofInbypVshS3V1LRDdcdouEG33nMMk3XvFa9v+0eeI18L64wEZ+GJ4vR9j7MdDNhthnB9LOoB92FiV94aVtAy1FvnwvDrGpMlO1M2Rvoq5UPMv3uuq4XTQNHZyKA8S0yZ80ckLWPce9coKZQzAoGALEzLnZkWrv7yOi0a+FwwCbq8YWSV+SZVDCpJ88WIIL6ozQxe7e7NJaQA31JOzjI2Qgj88nT0Bvoq5LpiYyxDL6RNOOmMSmx13CwhLuCYs+ycx2JZHnSGS8gVFY35m9+4gAnOknoUojBS7NMnusKTyuv8nlYZTWfDR+gRq6+t75EBECgYAOGcWYW5uc4IEW0pnRBjRXnTAPz3+ajf9JQPitKOfzqTZNmPLvtmuSGaF4TvOkFUGhbU2zkBr65MXs1X1O6FcFnff5tIpUA97Wei9PHVFp2YkYTRqByflCfLoyD1eysfKzIda663NH1nAStaCT+TlYAnvxJboeyRzsm78MwigJQMA==n-----END PRIVATE KEY-----n,
+  client_email firebase-adminsdk-fbsvc@evomspor.iam.gserviceaccount.com,
+  client_id 113124620432836827880,
+  auth_uri httpsaccounts.google.comooauth2auth,
+  token_uri httpsoauth2.googleapis.comtoken
+};
+
+function getFCMAccessToken() {
+  try {
+    var scriptProperties = PropertiesService.getScriptProperties();
+    var cachedToken = scriptProperties.getProperty(FCM_ACCESS_TOKEN);
+    var tokenExpiry = scriptProperties.getProperty(FCM_TOKEN_EXPIRY);
+
+    if (cachedToken && tokenExpiry) {
+      var expiryTime = parseInt(tokenExpiry);
+      if (Date.now()  expiryTime) {
+        Logger.log(✅ Cached token kullanılıyor);
+        return cachedToken;
+      }
+    }
+
+    var header = {
+      alg RS256,
+      typ JWT
+    };
+
+    var now = Math.floor(Date.now()  1000);
+    var claim = {
+      iss SERVICE_ACCOUNT.client_email,
+      scope httpswww.googleapis.comauthfirebase.messaging,
+      aud SERVICE_ACCOUNT.token_uri,
+      exp now + 3600,
+      iat now
+    };
+
+    var encodedHeader = Utilities.base64EncodeWebSafe(JSON.stringify(header));
+    var encodedClaim = Utilities.base64EncodeWebSafe(JSON.stringify(claim));
+    var toSign = encodedHeader + . + encodedClaim;
+
+    var signature = Utilities.computeRsaSha256Signature(toSign, SERVICE_ACCOUNT.private_key);
+    var encodedSignature = Utilities.base64EncodeWebSafe(signature);
+
+    var jwt = toSign + . + encodedSignature;
+
+    var payload = {
+      grant_type urnietfparamsoauthgrant-typejwt-bearer,
+      assertion jwt
+    };
+
+    var options = {
+      method post,
+      contentType applicationx-www-form-urlencoded,
+      payload payload,
+      muteHttpExceptions true
+    };
+
+    var response = UrlFetchApp.fetch(SERVICE_ACCOUNT.token_uri, options);
+    var result = JSON.parse(response.getContentText());
+
+    if (result.access_token) {
+      scriptProperties.setProperty(FCM_ACCESS_TOKEN, result.access_token);
+      scriptProperties.setProperty(FCM_TOKEN_EXPIRY, (Date.now() + 55  60  1000).toString());
+      Logger.log(✅ Yeni access token alındı!);
+      return result.access_token;
+    }
+
+    throw new Error(Token alınamadı  + JSON.stringify(result));
+
+  } catch(e) {
+    Logger.log(❌ Token hatası  + e.toString());
+    throw e;
+  }
+}
+
+function sendFCMNotificationV1(fcmToken, title, message, type) {
+  try {
+    var accessToken = getFCMAccessToken();
+    var url = httpsfcm.googleapis.comv1projects + FCM_PROJECT_ID + messagessend;
+
+    var notificationTitle = title;
+    if (type === payment_reminder) notificationTitle = 💰 Ödeme Hatırlatması;
+    else if (type === urgent) notificationTitle = ⚠️ ACİL Duyuru;
+    else if (type === announcement) notificationTitle = 📢 Yeni Duyuru;
+    else if (type === attendance_alert) notificationTitle = ❌ Antrenman İptali;
+
+    var payload = {
+      message {
+        token fcmToken,
+        notification {
+          title notificationTitle,
+          body message.length  100  message.substring(0, 100) + ...  message
+        },
+        data {
+          click_action FLUTTER_NOTIFICATION_CLICK,
+          type type,
+          title title,
+          message message
+        },
+        android {
+          priority high,
+          notification {
+            sound default,
+            channel_id app_notifications
+          }
+        },
+        apns {
+          payload {
+            aps {
+              sound default,
+              badge 1
+            }
+          }
+        }
+      }
+    };
+
+    var options = {
+      method post,
+      contentType applicationjson,
+      headers {
+        Authorization Bearer  + accessToken
+      },
+      payload JSON.stringify(payload),
+      muteHttpExceptions true
+    };
+
+    var response = UrlFetchApp.fetch(url, options);
+    var responseText = response.getContentText();
+    Logger.log(📲 FCM V1 Yanıtı  + responseText);
+
+    return JSON.parse(responseText);
+
+  } catch(e) {
+    Logger.log(❌ FCM V1 hatası  + e.toString());
+    return null;
+  }
+}
+
+function triggerFCMForNotification(notificationData) {
+  try {
+    Logger.log(📢 Yeni duyuru için FCM tetikleniyor...);
+
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var usersSheet = ss.getSheetByName(users);
+    var usersData = usersSheet.getDataRange().getValues();
+    var usersHeaders = usersData[0];
+
+    var tokenCol = usersHeaders.indexOf(fcm_token);
+    var userIdCol = usersHeaders.indexOf(app);
+    var roleCol = usersHeaders.indexOf(role);
+
+    if (tokenCol === -1) {
+      Logger.log(⚠️ fcm_token sütunu bulunamadı!);
+      return;
+    }
+
+    var recipientId = notificationData[recipient_id] != null  notificationData[recipient_id].toString()  ;
+    var senderId = notificationData[sender_id] != null  notificationData[sender_id].toString()  ;
+    var groupsId = notificationData[groups_id] != null  notificationData[groups_id].toString()  ;
+    var title = notificationData[title]  Yeni Duyuru;
+    var message = notificationData[message]  ;
+    var type = notificationData[type]  announcement;
+
+    Logger.log(📨 Bildirim - Title  + title);
+    Logger.log(📨 recipient_id  + recipientId);
+    Logger.log(📨 groups_id  + groupsId);
+
+    var tokensToSend = [];
+
+    if (recipientId === all  recipientId === Tümü  recipientId === ALL) {
+      Logger.log(📨 Tüm kullanıcılara gönderiliyor...);
+      for (var i = 1; i  usersData.length; i++) {
+        var userId = usersData[i][userIdCol] != null  usersData[i][userIdCol].toString()  ;
+        var token = usersData[i][tokenCol];
+        if (userId !== senderId && token && token.toString().trim() !== ) {
+          tokensToSend.push(token.toString().trim());
+        }
+      }
+    } else if (recipientId !==  && groupsId === ) {
+      Logger.log(📨 Bireysel bildirim  + recipientId);
+      for (var i = 1; i  usersData.length; i++) {
+        var userId = usersData[i][userIdCol] != null  usersData[i][userIdCol].toString()  ;
+        var token = usersData[i][tokenCol];
+        if (userId === recipientId && userId !== senderId && token && token.toString().trim() !== ) {
+          tokensToSend.push(token.toString().trim());
+          break;
+        }
+      }
+    } else if (groupsId && groupsId !==  && groupsId !== null) {
+      Logger.log(📨 Grup bildirimi  + groupsId);
+      var groupCoach = getGroupCoach(groupsId);
+
+      for (var i = 1; i  usersData.length; i++) {
+        var userId = usersData[i][userIdCol] != null  usersData[i][userIdCol].toString()  ;
+        var role = usersData[i][roleCol] != null  usersData[i][roleCol].toString().toLowerCase()  ;
+        var token = usersData[i][tokenCol];
+        if (!token  token.toString().trim() === ) continue;
+        if (userId === senderId) continue;
+
+        if (groupCoach === userId) {
+          tokensToSend.push(token.toString().trim());
+        } else if (role === student  role === öğrenci) {
+          var userGroups = getUserGroupIds(userId);
+          if (userGroups.indexOf(groupsId) !== -1) {
+            tokensToSend.push(token.toString().trim());
+          }
+        }
+      }
+    }
+
+    Logger.log(📨 Toplam  + tokensToSend.length +  cihaza bildirim gönderilecek);
+
+    for (var k = 0; k  tokensToSend.length; k++) {
+      try {
+        sendFCMNotificationV1(tokensToSend[k], title, message, type);
+        Utilities.sleep(100);
+      } catch(e) {
+        Logger.log(❌ Bildirim gönderilemedi  + e.toString());
+      }
+    }
+
+    Logger.log(✅ Tüm bildirimler gönderildi!);
+
+  } catch (error) {
+    Logger.log(❌ FCM tetikleme hatası  + error.toString());
+  }
+}
+
+function getUserGroupIds(userId) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var groupStudentSheet = ss.getSheetByName(group_students);
+  var gsData = groupStudentSheet.getDataRange().getValues();
+  var gsHeaders = gsData[0];
+
+  var studentIdCol = gsHeaders.indexOf(student_id);
+  var groupIdCol = gsHeaders.indexOf(groups_id);
+  var isActiveCol = gsHeaders.indexOf(is_active);
+
+  var groupIds = [];
+
+  for (var i = 1; i  gsData.length; i++) {
+    var studentId = gsData[i][studentIdCol] != null  gsData[i][studentIdCol].toString()  ;
+    var isActive = gsData[i][isActiveCol] != null  gsData[i][isActiveCol].toString().toUpperCase()  ;
+
+    if (studentId === userId && isActive === TRUE) {
+      var groupId = gsData[i][groupIdCol] != null  gsData[i][groupIdCol].toString()  ;
+      if (groupId) groupIds.push(groupId);
+    }
+  }
+
+  return groupIds;
+}
+
+function getGroupCoach(groupId) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var groupsSheet = ss.getSheetByName(groups);
+  var groupsData = groupsSheet.getDataRange().getValues();
+  var groupsHeaders = groupsData[0];
+
+  for (var i = 1; i  groupsData.length; i++) {
+    var gId = getValue(groupsData[i], groupsHeaders, groups_id);
+    gId = gId !== null && gId !== undefined  gId.toString()  ;
+    if (gId === groupId.toString()) {
+      var cId = getValue(groupsData[i], groupsHeaders, coach_id);
+      return cId !== null && cId !== undefined  cId.toString()  ;
+    }
+  }
+  return ;
+}
+
+function getValue(row, headers, key) {
+  var index = headers.indexOf(key);
+  if (index === -1) return null;
+  return row[index];
+}
+
+ =========================================================================
+ 20. KISIM YARDIMCI FONKSİYONLAR
+ =========================================================================
+
+function handleSend2FACode(phone, code) {
+  return responseSuccess({ message SMS gönderildi (test modu), code code });
+}
+
+function checkMonthlyFees() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(groups);
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+
+    var monthlyFeeCol = headers.indexOf(monthly_fee);
+    var nameCol = headers.indexOf(groups_name);
+    var idCol = headers.indexOf(groups_id);
+
+    if (monthlyFeeCol === -1) {
+      SpreadsheetApp.getUi().alert(❌ 'monthly_fee' sütunu bulunamadı!);
+      return;
+    }
+
+    var report = 📊 AYLIK ÜCRET KONTROLÜn;
+    report += ═══════════════════════════nn;
+
+    for (var i = 1; i  data.length; i++) {
+      var groupId = data[i][idCol];
+      var groupName = data[i][nameCol];
+      var monthlyFee = data[i][monthlyFeeCol];
+
+      report += Grup  + groupName + n;
+      report += Ücret  + (monthlyFee  TANIMLANMAMIŞ) + n;
+      report += ------------------------n;
+    }
+
+    SpreadsheetApp.getUi().alert(report);
+
+  } catch (err) {
+    SpreadsheetApp.getUi().alert(❌ Hata  + err.toString());
+  }
+}
+
+function checkStudentGroupRelations() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var groupStudentsSheet = ss.getSheetByName(group_students);
+  var usersSheet = ss.getSheetByName(users);
+  var groupsSheet = ss.getSheetByName(groups);
+
+  var gsData = groupStudentsSheet.getDataRange().getValues();
+  var gsHeaders = gsData[0];
+
+  var studentIdCol = gsHeaders.indexOf(student_id);
+  var groupIdCol = gsHeaders.indexOf(groups_id);
+  var isActiveCol = gsHeaders.indexOf(is_active);
+
+  var usersData = usersSheet.getDataRange().getValues();
+  var usersHeaders = usersData[0];
+  var userIdCol = usersHeaders.indexOf(app);
+  var userNameCol = usersHeaders.indexOf(first_name);
+
+  var groupsData = groupsSheet.getDataRange().getValues();
+  var groupsHeaders = groupsData[0];
+  var groupNameCol = groupsHeaders.indexOf(groups_name);
+  var groupIdColGroups = groupsHeaders.indexOf(groups_id);
+
+  var report = 📊 ÖĞRENCİ-GRUP İLİŞKİLERİ KONTROLÜn;
+  report += ══════════════════════════════════════nn;
+
+  for (var i = 1; i  gsData.length; i++) {
+    var studentId = gsData[i][studentIdCol];
+    var groupId = gsData[i][groupIdCol];
+    var isActive = gsData[i][isActiveCol];
+
+    var studentName = ;
+    for (var j = 1; j  usersData.length; j++) {
+      if (usersData[j][userIdCol].toString() === studentId.toString()) {
+        studentName = usersData[j][userNameCol] +   + (usersData[j][userNameCol+1]  );
+        break;
+      }
+    }
+
+    var groupName = ;
+    for (var j = 1; j  groupsData.length; j++) {
+      if (groupsData[j][groupIdColGroups].toString() === groupId.toString()) {
+        groupName = groupsData[j][groupNameCol];
+        break;
+      }
+    }
+
+    report += Öğrenci  + studentName +  (ID  + studentId + )n;
+    report += Grup  + groupName +  (ID  + groupId + )n;
+    report += Durum  + isActive + n;
+    report += ------------------------n;
+  }
+
+  SpreadsheetApp.getUi().alert(report);
+}
+
+function analyzeAllSheets() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheets = ss.getSheets();
+  var report = 📊 BASKETBOL SCHOOL DB - ANALİZ RAPORUn;
+  report += ════════════════════════════════nn;
+
+  for (var i = 0; i  sheets.length; i++) {
+    var sheet = sheets[i];
+    var sheetName = sheet.getName();
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+
+    report += 📄  + sheetName + n;
+    report +=    Satır  + lastRow +   Sütun  + lastCol + n;
+
+    if (lastCol  0 && lastRow  0) {
+      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      report +=    Sütunlar  + headers.join(, ) + n;
+    }
+    report += n;
+  }
+
+  Logger.log(report);
+  SpreadsheetApp.getUi().alert(✅ Analiz tamamlandı!);
+  return report;
+}
+
+ =========================================================================
+ 21. KISIM YANIT FONKSİYONLARI
+ =========================================================================
+
+function responseSuccess(data) {
+  var responseObj = { success true, data data };
+  return ContentService.createTextOutput(JSON.stringify(responseObj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function responseError(errorMsg) {
+  return ContentService.createTextOutput(JSON.stringify({ success false, error errorMsg }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+ =========================================================================
+ 22. KISIM TEST FONKSİYONLARI
+ =========================================================================
+
+function testFCM() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(users);
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+
+  var tokenCol = headers.indexOf(fcm_token);
+  var emailCol = headers.indexOf(email);
+
+  var testToken = ;
+  for (var i = 1; i  data.length; i++) {
+    if (data[i][tokenCol] && data[i][tokenCol].toString().trim() !== ) {
+      testToken = data[i][tokenCol].toString().trim();
+      Logger.log(📱 Test token bulundu  + data[i][emailCol]);
+      break;
+    }
+  }
+
+  if (testToken) {
+    sendFCMNotificationV1(testToken, 🧪 Test Bildirimi, FCM HTTP V1 API çalışıyor! Bu bir test mesajıdır., announcement);
+  } else {
+    Logger.log(❌ Hiç FCM token bulunamadı! Önce uygulamayı açıp giriş yapın.);
+  }
+}
+
+function fixLocalAttendanceIds() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(attendances);
+  if (!sheet) {
+    Logger.log(❌ attendances tablosu bulunamadı.);
+    return;
+  }
+
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var idCol = headers.indexOf(attendances_id);
+  if (idCol === -1) {
+    Logger.log(❌ attendances_id sütunu yok.);
+    return;
+  }
+
+  var maxId = 0;
+  for (var i = 1; i  data.length; i++) {
+    var id = data[i][idCol];
+    if (id && id.toString().trim() !== ) {
+      var num = parseInt(id);
+      if (!isNaN(num) && num  maxId) {
+        maxId = num;
+      }
+    }
+  }
+
+  var nextId = maxId + 1;
+  var rowsUpdated = 0;
+
+  for (var i = 1; i  data.length; i++) {
+    var currentId = data[i][idCol] != null  data[i][idCol].toString().trim()  ;
+ var isNumeric = ^d+$.test(currentId);
+if (currentId !==  && !isNumeric) { 
+      sheet.getRange(i + 1, idCol + 1).setValue(nextId);
+      Logger.log(✅  + currentId +  →  + nextId);
+      nextId++;
+      rowsUpdated++;
+    }
+  }
+
+  Logger.log(✅  + rowsUpdated +  satır düzeltildi. Yeni ID aralığı  + (maxId + 1) +  -  + (nextId - 1));
+  SpreadsheetApp.getUi().alert(✅  + rowsUpdated +  satır düzeltildi!);
+}
+
+function fixFcmTokenColumn() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(users);
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  if (headers.indexOf(fcm_token) === -1) {
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue(fcm_token);
+    Logger.log(✅ fcm_token sütunu eklendi!);
+  } else {
+    Logger.log(✅ fcm_token sütunu zaten var!);
+  }
+}
+
+
+ =========================================================================
+ 🔥🔥🔥 YENİ YARDIMCI ANTRENÖR BAĞLA (assignAssistantToMaster)
+ =========================================================================
+
+function assignAssistantToMaster(request) {
+  Logger.log(📌 assignAssistantToMaster BAŞLADI);
+  
+  var assistantUserId = request.assistant_user_id.toString().trim()  ;
+  var masterUserId = request.master_user_id.toString().trim()  ;
+  
+  Logger.log(   Yardımcı USER_ID  + assistantUserId);
+  Logger.log(   Ana Hoca USER_ID  + masterUserId);
+  
+  if (!assistantUserId  !masterUserId) {
+    return responseError(assistant_user_id ve master_user_id gerekli!);
+  }
+  
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var coachSheet = ss.getSheetByName(coaches);
+    var coachValues = coachSheet.getDataRange().getValues();
+    var coachHeaders = coachValues[0];
+    
+    var userIdCol = coachHeaders.indexOf(user_id);
+    var supervisorCol = coachHeaders.indexOf(supervisor_coach_id);
+    
+    if (userIdCol === -1  supervisorCol === -1) {
+      return responseError(coaches sayfasında gerekli sütunlar bulunamadı!);
+    }
+    
+     🔥 ADIM 1 Ana hocanın satırını bul
+    var masterRowIndex = -1;
+    for (var i = 1; i  coachValues.length; i++) {
+      var coachUserId = coachValues[i][userIdCol].toString().trim()  ;
+      if (coachUserId === masterUserId) {
+        masterRowIndex = i + 1;
+        break;
+      }
+    }
+    
+    if (masterRowIndex === -1) {
+      Logger.log(⚠️ Ana hoca bulunamadı user_id= + masterUserId);
+      return responseError(Ana hoca bulunamadı  + masterUserId);
+    }
+    
+     🔥 ADIM 2 Ana hocanın supervisor'ına yardımcının USER_ID'sini EKLE
+    var currentSupervisor = coachValues[masterRowIndex - 1][supervisorCol].toString().trim()  ;
+    var newSupervisorValue = ;
+    
+    if (currentSupervisor === ) {
+      newSupervisorValue = assistantUserId;
+    } else {
+      var ids = currentSupervisor.split(,).map(function(id) { return id.trim(); });
+      if (ids.indexOf(assistantUserId) === -1) {
+        ids.push(assistantUserId);
+      }
+      newSupervisorValue = ids.join(,);
+    }
+    
+    coachSheet.getRange(masterRowIndex, supervisorCol + 1).setValue(newSupervisorValue);
+    SpreadsheetApp.flush();
+    
+    Logger.log(✅ Ana hocanın ( + masterUserId + ) supervisor'ına yardımcı eklendi  + newSupervisorValue);
+    
+    return responseSuccess({ 
+      message Yardımcı başarıyla eklendi!, 
+      assistant_user_id assistantUserId,
+      master_user_id masterUserId
+    });
+    
+  } catch (e) {
+    Logger.log(❌ assignAssistantToMaster hatası  + e.toString());
+    return responseError(Hata  + e.toString());
+  }
+}
+
+ =========================================================================
+ 🔥🔥🔥 YENİ YARDIMCI ANTRENÖR ÇIKAR (removeAssistantFromMaster)
+ =========================================================================
+
+function removeAssistantFromMaster(request) {
+  Logger.log(📌 removeAssistantFromMaster BAŞLADI);
+  
+  var assistantUserId = request.assistant_user_id.toString().trim()  ;
+  var masterUserId = request.master_user_id.toString().trim()  ;
+  
+  Logger.log(   Yardımcı USER_ID  + assistantUserId);
+  Logger.log(   Ana Hoca USER_ID  + masterUserId);
+  
+  if (!assistantUserId  !masterUserId) {
+    return responseError(assistant_user_id ve master_user_id gerekli!);
+  }
+  
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var coachSheet = ss.getSheetByName(coaches);
+    var coachValues = coachSheet.getDataRange().getValues();
+    var coachHeaders = coachValues[0];
+    
+    var userIdCol = coachHeaders.indexOf(user_id);
+    var supervisorCol = coachHeaders.indexOf(supervisor_coach_id);
+    
+    if (userIdCol === -1  supervisorCol === -1) {
+      return responseError(coaches sayfasında gerekli sütunlar bulunamadı!);
+    }
+    
+     🔥 Ana hocanın satırını bul
+    var masterRowIndex = -1;
+    for (var i = 1; i  coachValues.length; i++) {
+      var coachUserId = coachValues[i][userIdCol].toString().trim()  ;
+      if (coachUserId === masterUserId) {
+        masterRowIndex = i + 1;
+        break;
+      }
+    }
+    
+    if (masterRowIndex === -1) {
+      Logger.log(⚠️ Ana hoca bulunamadı user_id= + masterUserId);
+      return responseError(Ana hoca bulunamadı  + masterUserId);
+    }
+    
+     🔥 Ana hocanın supervisor'ından yardımcının USER_ID'sini ÇIKAR
+    var currentSupervisor = coachValues[masterRowIndex - 1][supervisorCol].toString().trim()  ;
+    var newSupervisorValue = ;
+    
+    if (currentSupervisor !== ) {
+      var ids = currentSupervisor.split(,).map(function(id) { return id.trim(); });
+      var filteredIds = ids.filter(function(id) { return id !== assistantUserId; });
+      newSupervisorValue = filteredIds.join(,);
+    }
+    
+    coachSheet.getRange(masterRowIndex, supervisorCol + 1).setValue(newSupervisorValue);
+    SpreadsheetApp.flush();
+    
+    Logger.log(✅ Ana hocanın ( + masterUserId + ) supervisor'ından yardımcı çıkarıldı  + assistantUserId);
+    
+    return responseSuccess({ 
+      message Yardımcı başarıyla çıkarıldı!, 
+      assistant_user_id assistantUserId,
+      master_user_id masterUserId
+    });
+    
+  } catch (e) {
+    Logger.log(❌ removeAssistantFromMaster hatası  + e.toString());
+    return responseError(Hata  + e.toString());
+  }
+}
+
+
+ =========================================================================
+ FOTOĞRAF LİNKLERİNİ GÜNCELLE (ESKİ KODDAN)
+ =========================================================================
+
+function fillMissingImageLinksFromDriveFast() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(users);
+    if (!sheet) {
+      Logger.log(❌ users sayfası bulunamadı!);
+      return;
+    }
+
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+
+    var photoCol = headers.indexOf(profile_photo_url);
+    var emailCol = headers.indexOf(email);
+    var appCol = headers.indexOf(app);
+
+    if (photoCol === -1  emailCol === -1) {
+      Logger.log(❌ Gerekli sütunlar bulunamadı!);
+      return;
+    }
+
+    var folder = DriveApp.getFolderById(1j8OGslMo8arnBIAOBcClka1rS6GPTDif);
+    var updatedCount = 0;
+
+    for (var i = 1; i  data.length; i++) {
+      var currentUrl = data[i][photoCol]  data[i][photoCol].toString().trim()  ;
+      var email = data[i][emailCol]  data[i][emailCol].toString().trim()  ;
+      var userId = data[i][appCol]  data[i][appCol].toString().trim()  ;
+
+      if (currentUrl ===  && email !== ) {
+         Önce .jpg dene
+        var fileName = email + .jpg;
+        var files = folder.getFilesByName(fileName);
+
+        if (files.hasNext()) {
+          var file = files.next();
+          var newUrl = file.getUrl();
+          sheet.getRange(i + 1, photoCol + 1).setValue(newUrl);
+          updatedCount++;
+          Logger.log(✅  + email +  için fotoğraf linki güncellendi (jpg)  + newUrl);
+        } else {
+           .png dene
+          var fileNamePng = email + .png;
+          var filesPng = folder.getFilesByName(fileNamePng);
+          if (filesPng.hasNext()) {
+            var file = filesPng.next();
+            var newUrl = file.getUrl();
+            sheet.getRange(i + 1, photoCol + 1).setValue(newUrl);
+            updatedCount++;
+            Logger.log(✅  + email +  için fotoğraf linki güncellendi (png)  + newUrl);
+          }
+        }
+      }
+    }
+
+    Logger.log(✅ Toplam  + updatedCount +  fotoğraf linki güncellendi!);
+    SpreadsheetApp.getUi().alert(✅  + updatedCount +  fotoğraf linki güncellendi!);
+
+  } catch (e) {
+    Logger.log(❌ fillMissingImageLinksFromDriveFast hatası  + e.toString());
+    SpreadsheetApp.getUi().alert(❌ Hata  + e.toString());
+  }
+}
+
+function testHandleUploadImage() {
+   Test edilecek kullanıcının emaili
+  const TEST_EMAIL = deneme1@gmail.com; 
+
+   1x1 piksel gerçek kırmızı JPEG (base64) - Boş kalırsa kod patlar, bu veri işini görecek
+  const TEST_BASE64 = 9j4AAQSkZJRgABAQEASABIAAD2wBDAPwgALCAABAAEBAREA8QAFBABAAAAAAAAAAAAAAAAAAAAAPaAAgBAQABPxA=;
+
+  const TEST_FILE_NAME = TEST_EMAIL + .jpg;
+
+  Logger.log(🧪 TEST BAŞLIYOR...);
+  Logger.log(📧 Test email  + TEST_EMAIL);
+  Logger.log(📁 Test dosya adı  + TEST_FILE_NAME);
+
+   Ana fonksiyonu tetikliyoruz
+  const result = handleUploadImage(
+    TEST_FILE_NAME,       fileName
+    TEST_BASE64,          base64Data
+    test,               folderName (Parametre olarak var ama içeride kullanılmıyor)
+    TEST_EMAIL,           targetUserId
+    profile_photo_url   targetField
+  );
+
+   Sonucu parse et (TextOutput içerisinden string'i çekiyoruz)
+  const resultText = result.getContent();
+  const resultJson = JSON.parse(resultText);
+
+  Logger.log(📩 Servisten Dönen Ham Yanıt  + resultText);
+
+   Ana fonksiyondaki 'status' yapısına göre kontrolü güncelledik
+  if (resultJson.status === success) {
+    Logger.log(✅ TEST BAŞARILI!);
+    Logger.log(📎 Dosya ID  + resultJson.data.fileId);
+    Logger.log(🔗 Sheet'i kontrol et → İlgili sütunlarda güncellenmiş mi bak bakalım.);
+  } else {
+    Logger.log(❌ TEST BAŞARISIZ  + resultJson.message);
+  }
+}
+
+
+
+function forceDrivePermissions() {
+  const folder = DriveApp.getFolderById(1FwSXiBXWlkDSA58QNLOelODMlSk7DYTG);
+  Logger.log(Klasör başarıyla tetiklendi  + folder.getName());
+}
+function forceFullDriveAuth() {
+   Bu 3 işlemin hepsi farklı Drive izni gerektiriyor
+  var folder = DriveApp.getFolderById(1FwSXiBXWlkDSA58QNLOelODMlSk7DYTG);
+  
+   1. Dosya oluştur
+  var testFile = folder.createFile(test_auth.txt, test);
+  
+   2. Paylaşım izni değiştir (EN ÖNEMLİ KISIM)
+  testFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  
+   3. Sil
+  testFile.setTrashed(true);
+  
+  Logger.log(✅ Tüm Drive izinleri başarıyla alındı!);
+}
+
+
+function testKilitVeKuyrukSistemi() {
+  Logger.log(🧪 TOPLU İSTEK TESTİ BAŞLIYOR...);
+  
+   Aynı anda çalıştırılacak 5 tane sahte istek nesnesi oluşturuyoruz
+   student_id '1' olan kişiye peş peşe farklı miktarlarda ödemeler basacağız
+  var sahteIstekler = [
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-01-01, amount 100, note Test 1 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-02-01, amount 200, note Test 2 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-03-01, amount 300, note Test 3 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-04-01, amount 400, note Test 4 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-05-01, amount 500, note Test 5 } },
+       { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-01-01, amount 100, note Test 1 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-02-01, amount 200, note Test 2 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-03-01, amount 300, note Test 3 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-04-01, amount 400, note Test 4 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-05-01, amount 500, note Test 5 } },
+       { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-01-01, amount 100, note Test 1 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-02-01, amount 200, note Test 2 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-03-01, amount 300, note Test 3 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-04-01, amount 400, note Test 4 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-05-01, amount 500, note Test 5 } },
+       { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-01-01, amount 100, note Test 1 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-02-01, amount 200, note Test 2 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-03-01, amount 300, note Test 3 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-04-01, amount 400, note Test 4 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-05-01, amount 500, note Test 5 } },
+       { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-01-01, amount 100, note Test 1 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-02-01, amount 200, note Test 2 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-03-01, amount 300, note Test 3 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-04-01, amount 400, note Test 4 } },
+    { action insert, table payments, data { student_id 1, group_id 1, due_date 2026-05-01, amount 500, note Test 5 } }
+  ];
+
+   Apps Script içinde asenkron yapı olmadığı için sahte istekleri taklit eden
+   ve LockService'i zorlayacak bir döngü kuruyoruz.
+  sahteIstekler.forEach(function(istek, index) {
+     Burada doPost'u doğrudan çağırarak sanki dışarıdan istek gelmiş gibi simüle ediyoruz
+    var e = {
+      postData {
+        contents JSON.stringify(istek)
+      }
+    };
+    
+    Logger.log(🚀 Döngüden tetiklenen sahte POST # + (index + 1));
+    doPost(e); 
+  });
+  
+  Logger.log(🏁 TEST BİTTİ. Günlükleri (Execution Logs) kontrol et!);
+}
+
+
+
+ Apps Script - Code.gs
+function handleGetVersionReport() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(version_tracking);
+    
+    if (!sheet) {
+      return responseError(version_tracking sayfası bulunamadı!);
+    }
+    
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+    
+    var userIdCol = headers.indexOf(user_id);
+    var emailCol = headers.indexOf(email);
+    var versionCol = headers.indexOf(app_version);
+    var lastSeenCol = headers.indexOf(last_seen);
+    var deviceCol = headers.indexOf(device_model);
+    
+    var now = new Date();
+    var last7Days = new Date(now);
+    last7Days.setDate(last7Days.getDate() - 7);
+    
+    var users = [];
+    var versionStats = {};
+    var totalActive = 0;
+    
+    for (var i = 1; i  values.length; i++) {
+      var userId = values[i][userIdCol].toString()  ;
+      var email = values[i][emailCol].toString()  ;
+      var version = values[i][versionCol].toString()  unknown;
+      var lastSeen = new Date(values[i][lastSeenCol]);
+      var device = values[i][deviceCol].toString()  ;
+      
+      var isActive = lastSeen  last7Days;
+      
+      if (isActive) {
+        totalActive++;
+        versionStats[version] = (versionStats[version]  0) + 1;
+      }
+      
+      users.push({
+        userId userId,
+        email email,
+        version version,
+        lastSeen lastSeen.toISOString(),
+        device device,
+        isActive isActive
+      });
+    }
+    
+    var sortedVersions = [];
+     🔥 HATALI OLAN versionStats.keys DEĞİŞTİRİLDİ, DOĞRU JS YAPISI GETİRİLDİ
+    var keys = Object.keys(versionStats);
+    for (var k = 0; k  keys.length; k++) {
+      var v = keys[k];
+      sortedVersions.push({
+        version v,
+        count versionStats[v],
+        percentage totalActive  0  ((versionStats[v]  totalActive)  100).toFixed(0)  0
+      });
+    }
+    sortedVersions.sort(function(a, b) { return b.count - a.count; });
+    
+    return responseSuccess({
+      totalActive totalActive,
+      versionStats sortedVersions,
+      users users
+    });
+    
+  } catch (error) {
+    Logger.log(❌ Rapor hatası  + error.toString());
+    return responseError(error.toString());
+  }
+}
+
+
+
+ Apps Script - Code.gs
+
+function checkForUpdates() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var settingsSheet = ss.getSheetByName(settings);
+    
+     Settings sayfası yoksa oluştur
+    if (!settingsSheet) {
+      settingsSheet = ss.insertSheet(settings);
+      settingsSheet.getRange(1, 1, 1, 2).setValues([[last_version_check, ]]);
+    }
+    
+     GitHub'dan en son sürümü al
+    var githubUrl = httpsapi.github.comreposoguzhankaynakEVOM_SPORreleaseslatest;
+    var response = UrlFetchApp.fetch(githubUrl, {
+      muteHttpExceptions true,
+      headers {
+        Accept applicationvnd.github.v3+json
+      }
+    });
+    
+    if (response.getResponseCode() == 200) {
+      var data = JSON.parse(response.getContentText());
+      var latestVersion = data.tag_name  data.name  unknown;
+      var releaseNotes = data.body  ;
+      var publishedAt = data.published_at  ;
+      var downloadUrl = data.assets != null && data.assets.length  0 
+         data.assets[0].browser_download_url 
+         ;
+      
+       Kaydedilmiş son versiyon
+      var savedVersion = settingsSheet.getRange(1, 2).getValue()  ;
+      
+       Yeni versiyon varsa bildirim gönder
+      if (savedVersion !== latestVersion) {
+         Tüm kullanıcılara bildirim gönder
+        sendUpdateNotificationToAll(latestVersion, releaseNotes, downloadUrl);
+        
+         Kaydet
+        settingsSheet.getRange(1, 2).setValue(latestVersion);
+        settingsSheet.getRange(1, 3).setValue(new Date().toISOString());
+        
+        Logger.log(✅ Yeni sürüm bulundu  + latestVersion);
+        return {
+          success true,
+          message Yeni sürüm bulundu!,
+          version latestVersion,
+          released true
+        };
+      } else {
+        Logger.log(ℹ️ Zaten güncel  + latestVersion);
+        return {
+          success true,
+          message Zaten güncel,
+          version latestVersion,
+          released false
+        };
+      }
+    }
+    
+    return {
+      success false,
+      error GitHub'dan alınamadı
+    };
+    
+  } catch (error) {
+    Logger.log(❌ Güncelleme kontrol hatası  + error.toString());
+    return {
+      success false,
+      error error.toString()
+    };
+  }
+}
+function sendUpdateNotificationToAll(version, releaseNotes, downloadUrl) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var usersSheet = ss.getSheetByName(users);
+    var usersData = usersSheet.getDataRange().getValues();
+    var usersHeaders = usersData[0];
+    
+    var fcmCol = usersHeaders.indexOf(fcm_token);
+    
+    var notification = {
+      notifications_id UPDATE_ + new Date().getTime(),
+      sender_id System,
+      recipient_id all,
+      groups_id ,
+      title 🔄 Yeni Güncelleme Mevcut!,
+      message Sürüm  + version +  yayınlandı!nn + 
+                 (releaseNotes  releaseNotes.substring(0, 200) + ...  Yeni özellikler ve iyileştirmeler mevcut.) + 
+                 nnLütfen uygulamayı güncelleyin.,
+      type update_available,
+      is_read FALSE,
+      sent_at new Date().toISOString()
+    };
+    
+    apiInsertDataInternal(notifications, notification);
+    
+    var tokens = [];
+    for (var i = 1; i  usersData.length; i++) {
+      var fcmToken = usersData[i][fcmCol].toString().trim()  ;
+      if (fcmToken) {
+        tokens.push(fcmToken);
+      }
+    }
+    
+     🔥 DİZİYİ DİREKT GÖNDERMEK YERİNE DÖNGÜ İLE TEKER TEKER ATILIYOR (V1 API Hatası Çözüldü)
+    if (tokens.length  0) {
+      for (var k = 0; k  tokens.length; k++) {
+        try {
+          sendFCMNotificationV1(
+            tokens[k],
+            🔄 Yeni Güncelleme  + version,
+            Uygulamanızı güncellemek için tıklayın!,
+            update_available
+          );
+          Utilities.sleep(100);  Sunucuyu yormamak için kısa bekleme
+        } catch(e) {
+          Logger.log(❌ Güncelleme push hatası (Token index  + k + )  + e.toString());
+        }
+      }
+    }
+    
+    Logger.log(✅  + tokens.length +  kullanıcıya güncelleme bildirimi döngüyle gönderildi!);
+    
+  } catch (error) {
+    Logger.log(❌ Güncelleme bildirimi ana hatası  + error.toString());
+  }
+}
+
+
+ Her gün saat 1000'da kontrol et
+function setupUpdateTrigger() {
+   Varolan tetikleyicileri temizle
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i  triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() == checkForUpdates) {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  
+   Yeni tetikleyici ekle (günde 1 kez)
+  ScriptApp.newTrigger(checkForUpdates)
+    .timeBased()
+    .everyDays(1)
+    .atHour(10)  Sabah 10'da
+    .create();
+  
+  Logger.log(✅ Zamanlanmış tetikleyici eklendi!);
+}
+
+
+ =========================================================================
+ 🔥 SÜRÜM TAKİBİ (VERSION TRACKING)
+ =========================================================================
+
+function handleTrackAppVersion(request) {
+  try {
+    var userId = request.user_id.toString().trim()  ;
+    var email = request.email.toString().trim()  ;
+    var appVersion = request.app_version.toString().trim()  ;
+    var deviceInfo = request.device_info.toString().trim()  ;
+
+    if (!userId  !appVersion) {
+      return responseError(user_id ve app_version gerekli!);
+    }
+
+    Logger.log(📱 Sürüm takibi  + userId +  -  + appVersion);
+
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(version_tracking);
+
+     Sayfa yoksa oluştur
+    if (!sheet) {
+      sheet = ss.insertSheet(version_tracking);
+      var headers = [
+        tracking_id, user_id, email, app_version,
+        device_model, android_version, last_seen, first_seen, ip_address
+      ];
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.setFrozenRows(1);
+      Logger.log(✅ version_tracking sayfası oluşturuldu!);
+    }
+
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+
+    var userIdCol = headers.indexOf(user_id);
+    var emailCol = headers.indexOf(email);
+    var versionCol = headers.indexOf(app_version);
+    var deviceCol = headers.indexOf(device_model);
+    var lastSeenCol = headers.indexOf(last_seen);
+    var firstSeenCol = headers.indexOf(first_seen);
+
+    var now = new Date().toISOString();
+    var found = false;
+
+     Kullanıcı zaten var mı
+    for (var i = 1; i  values.length; i++) {
+      var sheetUserId = values[i][userIdCol].toString().trim()  ;
+      if (sheetUserId === userId) {
+         Güncelle
+        if (versionCol !== -1) sheet.getRange(i + 1, versionCol + 1).setValue(appVersion);
+        if (emailCol !== -1) sheet.getRange(i + 1, emailCol + 1).setValue(email);
+        if (deviceCol !== -1) sheet.getRange(i + 1, deviceCol + 1).setValue(deviceInfo);
+        if (lastSeenCol !== -1) sheet.getRange(i + 1, lastSeenCol + 1).setValue(now);
+        found = true;
+        Logger.log(✅ Kullanıcı güncellendi  + userId +  - Sürüm  + appVersion);
+        break;
+      }
+    }
+
+     Yeni kullanıcı
+    if (!found) {
+      var newRow = [];
+      for (var h = 0; h  headers.length; h++) {
+        var header = headers[h];
+        if (header === tracking_id) {
+          newRow.push(getNextId(sheet));
+        } else if (header === user_id) {
+          newRow.push(userId);
+        } else if (header === email) {
+          newRow.push(email  );
+        } else if (header === app_version) {
+          newRow.push(appVersion);
+        } else if (header === device_model) {
+          newRow.push(deviceInfo  );
+        } else if (header === android_version) {
+          newRow.push(Android);
+        } else if (header === last_seen  header === first_seen) {
+          newRow.push(now);
+        } else if (header === ip_address) {
+          newRow.push();
+        } else {
+          newRow.push();
+        }
+      }
+      sheet.appendRow(newRow);
+      Logger.log(✅ Yeni kullanıcı eklendi  + userId +  - Sürüm  + appVersion);
+    }
+
+    return responseSuccess({
+      message Sürüm takibi kaydedildi,
+      user_id userId,
+      app_version appVersion
+    });
+
+  } catch (error) {
+    Logger.log(❌ Sürüm takibi hatası  + error.toString());
+    return responseError(error.toString());
+  }
+}
+
+
+ =========================================================================
+ 🔥 YENİ TEK İSTEKTE TÜM VERİTABANI (getAllDataBulk)
+ =========================================================================
+ AppRepository.loadAllData() şu an 9 AYRI HTTP isteği atıyor (Future.wait ile).
+ Bu fonksiyon TEK istekte tüm tabloları döner.
+ Flutter tarafında 9 çağrı yerine 1 çağrı olur.
+
+function handleGetAllDataBulk(request) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var requestedTables = request.tables; 
+
+    var allTableNames = [
+      users, groups, group_students, payments,
+      attendances, branches, sports, coaches,
+      notifications, parent_student
+    ];
+
+    var tablesToFetch = (requestedTables && requestedTables.length  0)
+       requestedTables
+       allTableNames;
+
+    var result = {};
+
+    for (var t = 0; t  tablesToFetch.length; t++) {
+      var tableName = tablesToFetch[t];
+      var sheet = ss.getSheetByName(tableName);
+
+      if (!sheet) {
+        result[tableName] = [];
+        continue;
+      }
+
+      var values = sheet.getDataRange().getValues();
+      if (values.length  2) {
+        result[tableName] = [];
+        continue;
+      }
+
+      var headers = values[0];
+      var rows = [];
+
+      for (var i = 1; i  values.length; i++) {
+         🔥 Eksik olan rowToObject fonksiyonu artık burada güvenle çalışıyor
+        rows.push(rowToObject(values[i], headers));
+      }
+
+      if (tableName === users) {
+        rows.forEach(function(u) { u.password_hash = ; });
+      }
+ handleGetAllDataBulk içindeki döngüde, tabloyu doldurduktan SONRA
+if (tableName === attendances) {
+  result[tableName] = dedupeAttendances(result[tableName]);
+}
+      result[tableName] = rows;
+    }
+
+    return responseSuccess(result);
+
+  } catch (error) {
+    Logger.log(❌ handleGetAllDataBulk hatası  + error.toString());
+    return responseError(Toplu veri çekme hatası  + error.toString());
+  }
+}
+function rowToObject(row, headers) {
+  var obj = {};
+  for (var j = 0; j  headers.length; j++) {
+    var header = headers[j];
+    var value = row[j];
+
+    if (value === undefined  value === null  value === ) {
+      obj[header] = ;
+    } else if (value instanceof Date) {
+      obj[header] = value.toISOString();
+    } else if (typeof value === number) {
+      obj[header] = value.toString();
+    } else {
+      obj[header] = value.toString();
+    }
+  }
+  return obj;
+}
+function dedupeAttendances(rows) {
+  var latest = {};
+  for (var i = 0; i  rows.length; i++) {
+    var a = rows[i];
+    var key = a.student_id +  + a.groups_id +  +
+              (a.attendance_date  ).split(T)[0].split( )[0];
+    var prev = latest[key];
+     updated_at yoksa eski kayıttır, yine de tut ama yenisi varsa o kazanır
+    if (!prev  (a.updated_at  )  (prev.updated_at  )) {
+      latest[key] = a;
+    }
+  }
+  return Object.keys(latest).map(function(k) { return latest[k]; });
+}
+
+function processPendingFCM() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(notifications);
+  if (!sheet) return;
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var sentCol = headers.indexOf(fcm_sent);
+  if (sentCol === -1) {
+    Logger.log(⚠️ fcm_sent sütunu yok, önce ekle.);
+    return;
+  }
+
+  for (var i = 1; i  values.length; i++) {
+    var sent = values[i][sentCol]  values[i][sentCol].toString().toUpperCase()  ;
+    if (sent === TRUE) continue;
+
+    var notif = rowToObject(values[i], headers);
+    try {
+      triggerFCMForNotification(notif);                  fanout burada, istek DIŞINDA
+      sheet.getRange(i + 1, sentCol + 1).setValue(TRUE);
+    } catch (e) {
+      Logger.log(FCM satır  + (i + 1) +  gönderilemedi  + e);
+    }
+  }
+}
+
+function setupFcmTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i  triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === processPendingFCM) {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  ScriptApp.newTrigger(processPendingFCM).timeBased().everyMinutes(1).create();
+  Logger.log(✅ FCM trigger kuruldu.);
+}
+
+
+
+
+function nereyeYaziyorum() {
+  var id = SCRIPT_PROP.getProperty(sheetId);
+  Logger.log(Script'in yazdığı SHEET_ID  + id);
+  try {
+    var ss = SpreadsheetApp.openById(id);
+    Logger.log(O dosyanın ADI  + ss.getName());
+    Logger.log(O dosyanın URL'i  + ss.getUrl());
+    var sh = ss.getSheetByName(attendances);
+    Logger.log(attendances son satır  + (sh  sh.getLastRow()  SEKME YOK));
+  } catch (e) {
+    Logger.log(HATA  + e.toString());
+  }
+}
+
+function TEST_bulkYazmaCalisiyorMu() {
+  var sahteVeri = [
+    {
+      attendances_id ,
+      groups_id 21,
+      student_id 999999,
+      taken_by TEST,
+      attendance_date 2026-08-24,
+      status TRUE,
+      note TEST KAYDI - sil
+    }
+  ];
+
+  Logger.log(🧪 TEST başlıyor. handleSaveBulkAttendance çağrılıyor...);
+  var sonuc = handleSaveBulkAttendance(sahteVeri);
+  Logger.log(🧪 SONUÇ  + sonuc.getContent());
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(attendances);
+  Logger.log(🧪 attendances YENİ son satır  + sheet.getLastRow());
+}
+
+function handleGetUpdatedData(request) {
+  try {
+    var lastSync = request.last_sync  new Date(request.last_sync)  null;
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+
+     Sadece sık değişen tablolar delta ile gelir
+    var deltaTables = [attendances, payments, notifications];
+     Küçük tablolar her zaman tam gelir (zaten küçükler, yormaz)
+    var fullTables = [users, groups, group_students, coaches, branches, sports];
+
+    var result = {};
+
+     Küçük tabloları olduğu gibi ver
+    for (var f = 0; f  fullTables.length; f++) {
+      result[fullTables[f]] = readWholeTable(ss, fullTables[f]);
+    }
+
+     Büyük tabloları SADECE updated_at  lastSync olanları ver
+    for (var d = 0; d  deltaTables.length; d++) {
+      var tableName = deltaTables[d];
+      var sheet = ss.getSheetByName(tableName);
+      if (!sheet) { result[tableName] = []; continue; }
+
+      var values = sheet.getDataRange().getValues();
+      if (values.length  2) { result[tableName] = []; continue; }
+
+      var headers = values[0];
+      var updatedCol = headers.indexOf(updated_at);
+      var rows = [];
+
+      for (var i = 1; i  values.length; i++) {
+         lastSync yoksa (ilk açılış) hepsini ver
+        if (lastSync === null) {
+          rows.push(rowToObject(values[i], headers));
+          continue;
+        }
+         updated_at kolonu yoksa güvenli tarafta kal, ver
+        if (updatedCol === -1) {
+          rows.push(rowToObject(values[i], headers));
+          continue;
+        }
+        var rowDate = values[i][updatedCol]  new Date(values[i][updatedCol])  null;
+         Sadece son senkrondan SONRA değişenler
+        if (rowDate && rowDate  lastSync) {
+          rows.push(rowToObject(values[i], headers));
+        }
+      }
+
+      if (tableName === attendances) rows = dedupeAttendances(rows);
+      result[tableName] = rows;
+    }
+
+    result[_server_time] = new Date().toISOString();  yeni lastSync bu olacak
+    return responseSuccess(result);
+
+  } catch (error) {
+    Logger.log(❌ handleGetUpdatedData hatası  + error.toString());
+    return responseError(Delta veri hatası  + error.toString());
+  }
+}
+
+ Küçük yardımcı — tam tablo okur
+function readWholeTable(ss, tableName) {
+  var sheet = ss.getSheetByName(tableName);
+  if (!sheet) return [];
+  var values = sheet.getDataRange().getValues();
+  if (values.length  2) return [];
+  var headers = values[0];
+  var rows = [];
+  for (var i = 1; i  values.length; i++) {
+    var obj = rowToObject(values[i], headers);
+    if (tableName === users) obj.password_hash = ;
+    rows.push(obj);
+  }
+  return rows;
+}
+
+
+
+
+
+ =========================================================================
+ 🔥 DELTA EK BLOĞU — mevcut kodlara DOKUNMA, sadece bunu en alta yapıştır
+ =========================================================================
+
+ Delta ile çekilen tablolar. updated_at herkeste, deleted sadece payments'ta.
+var DELTA_TABLES_ = [payments, notifications, attendances];
+
+ Kolon eksikse otomatik ekler (idempotent — kaç kez çalışsa zarar yok)
+function ensureDeltaColumns_() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  DELTA_TABLES_.forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+
+    function addCol(col) {
+      if (headers.indexOf(col) === -1) {
+        sh.getRange(1, sh.getLastColumn() + 1).setValue(col);
+        headers.push(col);
+        Logger.log(➕  + name +  -  + col +  eklendi);
+      }
+    }
+    addCol(updated_at);
+    if (name === payments) addCol(deleted);  soft-delete için
+  });
+  SpreadsheetApp.flush();
+}
+
+ Boş updated_at olan satırları doldurur (varsa tarih kolonundan, yoksa şimdi)
+function backfillDeltaUpdatedAt_() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var now = new Date().toISOString();
+  var seedCols = [created_at, sent_at, paid_date, due_date, attendance_date];
+
+  DELTA_TABLES_.forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    var values = sh.getDataRange().getValues();
+    if (values.length  2) return;
+    var headers = values[0];
+    var upCol = headers.indexOf(updated_at);
+    if (upCol === -1) return;
+
+    for (var i = 1; i  values.length; i++) {
+      var cur = values[i][upCol];
+      if (cur === null  cur === undefined  cur.toString().trim() === ) {
+        var seed = ;
+        for (var s = 0; s  seedCols.length; s++) {
+          var c = headers.indexOf(seedCols[s]);
+          if (c !== -1 && values[i][c] && values[i][c].toString().trim() !== ) {
+            seed = values[i][c].toString();
+            break;
+          }
+        }
+        sh.getRange(i + 1, upCol + 1).setValue(seed !==   seed  now);
+      }
+    }
+  });
+}
+
+ 🔁 TRIGGER yeni eklenen (updated_at boş) satırları damgalar.
+ insert'ler apiInsertDataInternal'dan geçtiği için updated_at boş kalıyordu;
+ bu fonksiyon onları yakalar. Kolon eksikse önce kendi ekler.
+function stampDeltaRows() {
+  ensureDeltaColumns_();
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var now = new Date().toISOString();
+
+  DELTA_TABLES_.forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    var values = sh.getDataRange().getValues();
+    if (values.length  2) return;
+    var headers = values[0];
+    var upCol = headers.indexOf(updated_at);
+    if (upCol === -1) return;
+
+    for (var i = 1; i  values.length; i++) {
+      var v = values[i][upCol];
+      if (v === null  v === undefined  v.toString().trim() === ) {
+        sh.getRange(i + 1, upCol + 1).setValue(now);
+      }
+    }
+  });
+}
+
+ Kurulum bir kez editörden çalıştır. Kolonları ekler, boşları doldurur,
+ 5 dakikada bir damgalama trigger'ı kurar.
+function setupDelta() {
+  ensureDeltaColumns_();
+  backfillDeltaUpdatedAt_();
+
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i  triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === stampDeltaRows) {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  ScriptApp.newTrigger(stampDeltaRows).timeBased().everyMinutes(5).create();
+
+  Logger.log(✅ Delta kurulumu tamam kolonlar + backfill + 5dk trigger);
+}
+
+
+
+ =========================================================================
+ 🔥 EK TABLOLAR BLOĞU — mevcut koda dokunma, en alta yapıştır
+ =========================================================================
+
+ ⬇️ SADECE BURAYI DOLDUR sekme adını (tab adı) ve kolonları yaz.
+var EXTRA_SHEETS_ = {
+   SEKME_ADI [kolon1, kolon2, ...]
+  student_data [
+    id, first_name, last_name, branches, email, phone,
+    b_date, created_at, updated_at
+  ],
+  expense_management [
+    id, first_name, last_name, money, mont_money,
+    paid_date, note, updated_at
+  ]
+};
+
+ Sekmeleri oluşturur  başlıklarını yazar (idempotent — kaç kez çalışsa zarar yok)
+function setupExtraSheets() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  for (var name in EXTRA_SHEETS_) {
+    var cols = EXTRA_SHEETS_[name];
+    var sh = ss.getSheetByName(name);
+    if (!sh) {
+      sh = ss.insertSheet(name);
+      Logger.log(➕ Sekme oluşturuldu  + name);
+    }
+    var existing = sh.getLastColumn()  0
+       sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]
+       [];
+     Eksik kolonları sona ekle (var olanı bozmaz)
+    cols.forEach(function (c) {
+      if (existing.indexOf(c) === -1) {
+        sh.getRange(1, sh.getLastColumn() + 1).setValue(c);
+        existing.push(c);
+      }
+    });
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, cols.length).setFontWeight(bold).setBackground(#cfe2f3);
+  }
+  SpreadsheetApp.flush();
+  Logger.log(✅ Ek tablolar hazır.);
+}
+
+ Generic EKLE (app'ten actioninsertExtra)
+function handleInsertExtra_(request) {
+  var name = (request.table  ).toString().trim();
+  if (!EXTRA_SHEETS_[name]) return responseError(Bilinmeyen ek tablo  + name);
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sh = ss.getSheetByName(name);
+  if (!sh) return responseError(Sekme yok  + name +  (önce setupExtraSheets çalıştır));
+
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  var data = request.data  {};
+  var row = [];
+  var now = new Date().toISOString();
+
+  for (var i = 0; i  headers.length; i++) {
+    var h = headers[i];
+    if (i === 0) {  ilk kolon = id
+      var idv = (data[h] === undefined  data[h] === null)    data[h].toString().trim();
+      row.push(idv !==  && ^d+$.test(idv)  idv  getNextId(sh));
+    } else if (h === updated_at  h === created_at) {
+      var tv = (data[h] === undefined  data[h] === null  data[h].toString().trim() === )
+         now  data[h].toString().trim();
+      row.push(tv);
+    } else {
+      row.push(data[h] !== undefined && data[h] !== null  data[h].toString()  );
+    }
+  }
+  sh.appendRow(row);
+  SpreadsheetApp.flush();
+  return responseSuccess({ message ✅ Eklendi, id row[0], table name });
+}
+
+ Generic GÜNCELLE (app'ten actionupdateExtra) — id ile bulur
+function handleUpdateExtra_(request) {
+  var name = (request.table  ).toString().trim();
+  if (!EXTRA_SHEETS_[name]) return responseError(Bilinmeyen ek tablo  + name);
+  var id = (request.id  ).toString().trim();
+  if (!id) return responseError(id gerekli.);
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sh = ss.getSheetByName(name);
+  var values = sh.getDataRange().getValues();
+  var headers = values[0];
+  var data = request.data  {};
+
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if ((values[i][0]  ).toString().trim() === id) { rowIndex = i + 1; break; }
+  }
+  if (rowIndex === -1) return responseError(Kayıt yok  + id);
+
+  headers.forEach(function (h, c) {
+    if (h === headers[0]) return;  id değişmez
+    if (data[h] !== undefined) sh.getRange(rowIndex, c + 1).setValue(data[h]);
+  });
+  var upC = headers.indexOf(updated_at);
+  if (upC !== -1) sh.getRange(rowIndex, upC + 1).setValue(new Date().toISOString());
+  return responseSuccess({ message ✅ Güncellendi, id id, table name });
+}
+
+ Generic OKU — tüm ek tabloları tek seferde döner (app'ten actiongetExtraBulk)
+function handleGetExtraBulk_() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var out = {};
+  for (var name in EXTRA_SHEETS_) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) { out[name] = []; continue; }
+    var values = sh.getDataRange().getValues();
+    if (values.length  2) { out[name] = []; continue; }
+    var headers = values[0];
+    var rows = [];
+    for (var i = 1; i  values.length; i++) rows.push(rowToObject(values[i], headers));
+    out[name] = rows;
+  }
+  return responseSuccess(out);
+}
+
+
+ Generic SİL (app'ten actiondeleteExtra) — id ile bulur ve satırı KALICI siler
+function handleDeleteExtra_(request) {
+  var name = (request.table  ).toString().trim();
+  if (!EXTRA_SHEETS_[name]) return responseError(Bilinmeyen ek tablo  + name);
+
+  var id = (request.id  ).toString().trim();
+  if (!id) return responseError(id gerekli.);
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sh = ss.getSheetByName(name);
+  if (!sh) return responseError(Sekme yok  + name);
+
+  var values = sh.getDataRange().getValues();
+  var rowIndex = -1;
+  for (var i = 1; i  values.length; i++) {
+    if ((values[i][0]  ).toString().trim() === id) {  ilk kolon = id
+      rowIndex = i + 1;
+      break;
+    }
+  }
+  if (rowIndex === -1) return responseError(Kayıt yok  + id);
+
+  sh.deleteRow(rowIndex);           🔥 satırı tamamen sil
+  SpreadsheetApp.flush();
+  return responseSuccess({ message ✅ Silindi, id id, table name });
+}
